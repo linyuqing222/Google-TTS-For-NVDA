@@ -1,0 +1,54 @@
+# NVDA Add-on packaging & build artifacts
+dist/
+*.nvda-addon
+*.zip
+
+# Python artifacts & caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+.Python
+build/
+develop-eggs/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+.venv/
+env/
+.env/
+
+# Google TTS for NVDA specific exclusions (per project rules)
+# Never commit or package downloaded voice packages or temporary Chrome profiles
+*.zvoice
+chromeProfiles/
+session-*/
+runtime/
+
+# Editor / IDE configuration
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

@@ -1,0 +1,509 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+from collections import OrderedDict
+from collections.abc import Iterator
+from contextlib import suppress
+import re
+import threading
+from typing import Any
+
+import addonHandler
+import config
+import synthDriverHandler
+import wx
+from logHandler import log
+from nvwave import WavePlayer
+from speech.commands import BreakCommand, IndexCommand, PitchCommand, RateCommand, VolumeCommand
+from synthDriverHandler import VoiceInfo, synthDoneSpeaking, synthIndexReached
+
+from .bridge import CdpCancelled, ChromeTtsBridge, SAMPLE_RATE
+from .catalog import VoiceCatalog
+from . import voice_store
+
+
+addonHandler.initTranslation()
+
+
+_CLAUSE_TARGET_CHARS = 220
+_CLAUSE_MAX_CHARS = 360
+_FAST_FIRST_CLAUSE_TARGET_CHARS = 140
+_FAST_FIRST_CLAUSE_MAX_CHARS = 200
+_FAST_FIRST_CLAUSE_MIN_CHARS = 40
+_SHORT_CACHE_MAX_CHARS = 200
+_SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?;:])\s+")
+_CLAUSE_BOUNDARY_RE = re.compile(r"[,;:]\s+")
+
+
+class SynthDriver(synthDriverHandler.SynthDriver):
+	name = "googleTtsForNvda"
+	description = "Google TTS For NVDA"
+	supportedSettings = (
+		synthDriverHandler.SynthDriver.VoiceSetting(),
+		synthDriverHandler.SynthDriver.RateSetting(),
+		synthDriverHandler.SynthDriver.RateBoostSetting(),
+		synthDriverHandler.SynthDriver.PitchSetting(),
+		synthDriverHandler.SynthDriver.VolumeSetting(),
+	)
+	supportedCommands = {
+		BreakCommand,
+		IndexCommand,
+		RateCommand,
+		PitchCommand,
+		VolumeCommand,
+	}
+	supportedNotifications = {synthIndexReached, synthDoneSpeaking}
+	cachePropertiesByDefault = False
+
+	@classmethod
+	def check(cls) -> bool:
+		return ChromeTtsBridge.find_chrome() is not None
+
+	def __init__(self) -> None:
+		super().__init__()
+		fullCatalog = VoiceCatalog.load()
+		installedPackages = voice_store.installed_packages(fullCatalog)
+		if not installedPackages:
+			# Defer opening the Voice Manager so it appears AFTER NVDA falls
+			# back to the previous synthesizer and displays its own warning dialog.
+			wx.CallAfter(self._prompt_for_voice_install)
+			raise RuntimeError("No Google TTS voice packages are installed.")
+		self.catalog = VoiceCatalog(installedPackages)
+		if not self.catalog.speakers:
+			raise RuntimeError("Installed Google TTS voice packages do not contain usable voices.")
+		self.availableVoices = self._build_available_voices()
+		self.availableLanguages = {speaker.language for speaker in self.catalog.speakers}
+		self._bridge = ChromeTtsBridge(self.catalog)
+		self._player = WavePlayer(channels=1, samplesPerSec=SAMPLE_RATE, bitsPerSample=16)
+		self._cancelEvent = threading.Event()
+		self._speechCondition = threading.Condition()
+		self._pendingSpeech: tuple[list[Any], str, int, int, int, threading.Event] | None = None
+		self._shutdownEvent = threading.Event()
+		self._cacheLock = threading.RLock()
+		self._shortAudioCache: OrderedDict[tuple[Any, ...], bytes] = OrderedDict()
+		self._worker = threading.Thread(
+			name="googleTtsForNvda.speech",
+			target=self._speech_loop,
+			daemon=True,
+		)
+		self._worker.start()
+		self.__voice = self._initial_voice()
+		self._rate = 50
+		self._rateBoost = False
+		self._pitch = 50
+		self._volume = 100
+		self._warmupThread: threading.Thread | None = None
+		self._warmupCancelEvent = threading.Event()
+		self._warm_current_voice_async()
+
+	def _prompt_for_voice_install(self) -> None:
+		def open_when_ready(retries: int = 200) -> None:
+			if retries <= 0:
+				return
+			for win in wx.GetTopLevelWindows():
+				if not win.IsShown():
+					continue
+				clsName = win.__class__.__name__
+				# Wait if there is an active MessageDialog (NVDA error dialog)
+				# or any modal dialog other than settings/voice manager dialogs.
+				if "MessageDialog" in clsName:
+					wx.CallLater(150, open_when_ready, retries - 1)
+					return
+				if isinstance(win, wx.Dialog) and getattr(win, "IsModal", lambda: False)():
+					if not any(known in clsName for known in ("SettingsDialog", "SynthesizerDialog", "VoiceManagerDialog")):
+						wx.CallLater(150, open_when_ready, retries - 1)
+						return
+			try:
+				from globalPlugins.googleTtsForNvda import open_voice_manager_download_tab
+
+				open_voice_manager_download_tab()
+			except Exception:
+				log.exception("Could not open Google TTS voice manager.", exc_info=True)
+
+		# Start checking after 250ms to allow NVDA to catch the RuntimeError,
+		# restore the fallback synthesizer, and display its own warning message box.
+		wx.CallLater(250, open_when_ready)
+
+	def terminate(self) -> None:
+		self.cancel()
+		self._shutdownEvent.set()
+		with self._speechCondition:
+			self._speechCondition.notify()
+		with suppress(Exception):
+			self._bridge.terminate()
+		with suppress(Exception):
+			self._player.close()
+
+	def speak(self, speechSequence: list[Any]) -> None:
+		self.cancel()
+		sequence = list(speechSequence)
+		cancelEvent = threading.Event()
+		voice = self.__voice
+		rate = self._rate
+		pitch = self._pitch
+		volume = self._volume
+		with self._speechCondition:
+			self._cancelEvent = cancelEvent
+			self._pendingSpeech = (sequence, voice, rate, pitch, volume, cancelEvent)
+			self._speechCondition.notify()
+
+	def cancel(self) -> None:
+		with self._speechCondition:
+			self._cancelEvent.set()
+			self._pendingSpeech = None
+			self._speechCondition.notify()
+		with suppress(Exception):
+			self._warmupCancelEvent.set()
+		with suppress(Exception):
+			self._player.stop()
+		with suppress(Exception):
+			self._bridge.cancel_current()
+
+	def pause(self, switch: bool) -> None:
+		self._player.pause(switch)
+
+	def _build_available_voices(self) -> "OrderedDict[str, VoiceInfo]":
+		voices: OrderedDict[str, VoiceInfo] = OrderedDict()
+		for speaker in self.catalog.speakers:
+			label = f"{speaker.name} ({speaker.language})"
+			voices[speaker.id] = VoiceInfo(speaker.id, label, speaker.language)
+		return voices
+
+	def _initial_voice(self) -> str:
+		try:
+			configured = config.conf["speech"][self.name]["voice"]
+			if configured in self.availableVoices:
+				return configured
+		except Exception:
+			pass
+		for speaker in self.catalog.speakers:
+			if speaker.language == "en-US":
+				return speaker.id
+		return next(iter(self.availableVoices))
+
+	def _iter_speech_chunks(
+		self,
+		speechSequence: list[Any],
+		voice: str,
+		rate: int,
+		pitch: int,
+		volume: int,
+		cancelEvent: threading.Event,
+	) -> Iterator[tuple[str, Any]]:
+		textParts: list[str] = []
+		firstTextSegment = True
+
+		def flush_text() -> Iterator[tuple[str, Any]]:
+			nonlocal firstTextSegment
+			text = "".join(textParts).strip()
+			textParts.clear()
+			if not text:
+				return
+			options = self._speech_options(rate, pitch, volume, voice)
+			for segment in self._iter_text_segments_for_latency(text, firstTextSegment):
+				if cancelEvent.is_set():
+					return
+				firstTextSegment = False
+				yield ("text", (segment, options))
+
+		for item in speechSequence:
+			if cancelEvent.is_set():
+				return
+			itemType = type(item)
+			if itemType is str:
+				textParts.append(item)
+			elif itemType is BreakCommand:
+				yield from flush_text()
+				if cancelEvent.is_set():
+					return
+				yield ("break", max(0, int(item.time)))
+			elif itemType is IndexCommand:
+				yield from flush_text()
+				if cancelEvent.is_set():
+					return
+				yield ("index", item.index)
+			elif itemType is RateCommand:
+				yield from flush_text()
+				if cancelEvent.is_set():
+					return
+				rate = int(item.newValue)
+			elif itemType is PitchCommand:
+				yield from flush_text()
+				if cancelEvent.is_set():
+					return
+				pitch = int(item.newValue)
+			elif itemType is VolumeCommand:
+				yield from flush_text()
+				if cancelEvent.is_set():
+					return
+				volume = int(item.newValue)
+		yield from flush_text()
+
+	def _split_text_for_latency(self, text: str) -> list[str]:
+		return list(self._iter_text_segments_for_latency(text, False))
+
+	def _iter_text_segments_for_latency(self, text: str, fastFirstSegment: bool) -> Iterator[str]:
+		text = text.strip()
+		if not text:
+			return
+		useFastFirstSegment = fastFirstSegment
+		for sentence in self._iter_sentence_units(text):
+			if useFastFirstSegment and len(sentence) > _CLAUSE_TARGET_CHARS:
+				cut = self._find_punctuation_cut(
+					sentence,
+					_FAST_FIRST_CLAUSE_TARGET_CHARS,
+					_FAST_FIRST_CLAUSE_MAX_CHARS,
+					_FAST_FIRST_CLAUSE_MIN_CHARS,
+				)
+				if cut <= 0 and len(sentence) > _CLAUSE_MAX_CHARS:
+					cut = self._find_hard_word_cut(sentence, _FAST_FIRST_CLAUSE_MAX_CHARS)
+				if 0 < cut < len(sentence):
+					segment = sentence[:cut].strip()
+					if segment:
+						yield segment
+					sentence = sentence[cut:].strip()
+			useFastFirstSegment = False
+			if not sentence:
+				continue
+			if len(sentence) > _CLAUSE_TARGET_CHARS:
+				for segment in self._iter_long_text_segments(sentence):
+					yield segment
+				continue
+			yield sentence
+
+	def _iter_sentence_units(self, text: str) -> Iterator[str]:
+		start = 0
+		for match in _SENTENCE_BOUNDARY_RE.finditer(text):
+			sentence = text[start : match.start()].strip()
+			if sentence:
+				yield sentence
+			start = match.end()
+		sentence = text[start:].strip()
+		if sentence:
+			yield sentence
+
+	def _iter_long_text_segments(self, text: str) -> Iterator[str]:
+		remaining = text.strip()
+		while remaining:
+			if len(remaining) <= _CLAUSE_TARGET_CHARS:
+				yield remaining
+				return
+			cut = self._find_punctuation_cut(remaining, _CLAUSE_TARGET_CHARS, _CLAUSE_MAX_CHARS)
+			if cut <= 0:
+				if len(remaining) <= _CLAUSE_MAX_CHARS:
+					yield remaining
+					return
+				cut = self._find_hard_word_cut(remaining, _CLAUSE_MAX_CHARS)
+			segment = remaining[:cut].strip()
+			if segment:
+				yield segment
+			remaining = remaining[cut:].strip()
+
+	def _find_punctuation_cut(self, text: str, targetChars: int, maxChars: int, minChars: int | None = None) -> int:
+		best = -1
+		minChars = targetChars // 2 if minChars is None else minChars
+		for match in _CLAUSE_BOUNDARY_RE.finditer(text):
+			cut = match.start() + 1
+			if cut < minChars or cut > maxChars:
+				continue
+			if best < 0 or abs(cut - targetChars) <= abs(best - targetChars):
+				best = cut
+		return best
+
+	def _find_hard_word_cut(self, text: str, maxChars: int) -> int:
+		if len(text) <= maxChars:
+			return len(text)
+		window = text[:maxChars]
+		cut = window.rfind(" ")
+		if cut > max(1, _CLAUSE_TARGET_CHARS // 2):
+			return cut
+		return maxChars
+
+	def _speech_loop(self) -> None:
+		while not self._shutdownEvent.is_set():
+			with self._speechCondition:
+				while self._pendingSpeech is None and not self._shutdownEvent.is_set():
+					self._speechCondition.wait()
+				if self._shutdownEvent.is_set():
+					return
+				request = self._pendingSpeech
+				self._pendingSpeech = None
+			if request is not None:
+				self._speak_worker(*request)
+
+	def _speak_worker(
+		self,
+		speechSequence: list[Any],
+		voice: str,
+		rate: int,
+		pitch: int,
+		volume: int,
+		cancelEvent: threading.Event,
+	) -> None:
+		try:
+			for kind, payload in self._iter_speech_chunks(
+				speechSequence,
+				voice,
+				rate,
+				pitch,
+				volume,
+				cancelEvent,
+			):
+				if cancelEvent.is_set():
+					return
+				if kind == "text":
+					text, options = payload
+					self._speak_text(text, options, cancelEvent)
+				elif kind == "break":
+					self._feed_silence(payload)
+				elif kind == "index":
+					synthIndexReached.notify(synth=self, index=payload)
+			if not cancelEvent.is_set():
+				self._player.idle()
+				synthDoneSpeaking.notify(synth=self)
+		except CdpCancelled:
+			log.debug("Google TTS speech cancelled.")
+		except Exception:
+			log.exception("Google TTS speech failed.", exc_info=True)
+			if not cancelEvent.is_set():
+				synthDoneSpeaking.notify(synth=self)
+
+	def _speak_text(self, text: str, options: dict[str, Any], cancelEvent: threading.Event) -> None:
+		cacheKey = self._short_cache_key(text, options)
+		if cacheKey is not None:
+			cached = self._get_cached_audio(cacheKey)
+			if cached is not None:
+				if not cancelEvent.is_set():
+					self._feed_audio(cached)
+				return
+		audioParts: list[bytes] = []
+
+		def on_audio(pcm: bytes) -> None:
+			if cancelEvent.is_set():
+				return
+			if cacheKey is not None and pcm:
+				audioParts.append(pcm)
+			self._feed_audio(pcm)
+
+		self._bridge.speak(text, options, on_audio, cancelEvent)
+		if cacheKey is not None and audioParts and not cancelEvent.is_set():
+			self._put_cached_audio(cacheKey, b"".join(audioParts))
+
+	def _feed_audio(self, pcm: bytes) -> None:
+		if pcm:
+			self._player.feed(pcm)
+
+	def _short_cache_key(self, text: str, options: dict[str, Any]) -> tuple[Any, ...] | None:
+		if len(text) > _SHORT_CACHE_MAX_CHARS:
+			return None
+		return (
+			text,
+			options.get("voiceId"),
+			options.get("rate"),
+			options.get("pitch"),
+			options.get("volume"),
+			options.get("outputGain"),
+		)
+
+	def _get_cached_audio(self, key: tuple[Any, ...]) -> bytes | None:
+		with self._cacheLock:
+			audio = self._shortAudioCache.get(key)
+			if audio is None:
+				return None
+			self._shortAudioCache.move_to_end(key)
+			return audio
+
+	def _put_cached_audio(self, key: tuple[Any, ...], audio: bytes) -> None:
+		if not audio:
+			return
+		with self._cacheLock:
+			self._shortAudioCache[key] = audio
+			self._shortAudioCache.move_to_end(key)
+
+	def _feed_silence(self, milliseconds: int) -> None:
+		if milliseconds <= 0:
+			return
+		frameCount = int(SAMPLE_RATE * milliseconds / 1000)
+		self._player.feed(b"\x00\x00" * frameCount)
+
+	def _speech_options(self, rate: int, pitch: int, volume: int, voice: str | None = None) -> dict[str, Any]:
+		speaker = self.catalog.speaker_for_voice(voice or self.__voice)
+		return {
+			"voiceId": speaker.id,
+			"voiceName": speaker.name,
+			"lang": speaker.language,
+			"rate": self._rate_to_chrome(rate),
+			"pitch": self._pitch_to_chrome(pitch),
+			"volume": max(0.0, min(1.0, volume / 100.0)),
+			"outputGain": max(0.0, min(2.0, volume / 50.0)),
+		}
+
+	def _warm_current_voice_async(self) -> None:
+		options = self._speech_options(self._rate, self._pitch, 0)
+		with suppress(Exception):
+			self._warmupCancelEvent.set()
+		cancelEvent = threading.Event()
+		self._warmupCancelEvent = cancelEvent
+
+		def warm() -> None:
+			try:
+				self._bridge.preload_voice(options, cancelEvent)
+			except CdpCancelled:
+				log.debug("Google TTS voice preload cancelled.")
+			except Exception:
+				log.debug("Google TTS voice preload failed.", exc_info=True)
+
+		thread = threading.Thread(name="googleTtsForNvda.preload", target=warm, daemon=True)
+		self._warmupThread = thread
+		thread.start()
+
+	def _rate_to_chrome(self, value: int) -> float:
+		percent = max(0, min(100, value)) / 100.0
+		rate = 0.35 + (2.0 - 0.35) * percent
+		if self._rateBoost:
+			rate *= 2
+		return round(max(0.1, min(10.0, rate)), 3)
+
+	def _pitch_to_chrome(self, pitch: int) -> float:
+		pitchSemitones = -12.0 + 24.0 * max(0, min(100, pitch)) / 100.0
+		return round(max(0.1, min(3.0, 1.0 + pitchSemitones / 20.0)), 3)
+
+	def _get_voice(self) -> str:
+		return self.__voice
+
+	def _set_voice(self, value: str) -> None:
+		if value not in self.availableVoices:
+			value = next(iter(self.availableVoices))
+		self.__voice = value
+		self._warm_current_voice_async()
+
+	def _get_language(self) -> str:
+		return self.catalog.language_for_voice(self.__voice)
+
+	def _get_rate(self) -> int:
+		return self._rate
+
+	def _set_rate(self, value: int) -> None:
+		self._rate = max(0, min(100, int(value)))
+
+	def _get_rateBoost(self) -> bool:
+		return self._rateBoost
+
+	def _set_rateBoost(self, value: bool) -> None:
+		self._rateBoost = bool(value)
+
+	def _get_pitch(self) -> int:
+		return self._pitch
+
+	def _set_pitch(self, value: int) -> None:
+		self._pitch = max(0, min(100, int(value)))
+
+	def _get_volume(self) -> int:
+		return self._volume
+
+	def _set_volume(self, value: int) -> None:
+		self._volume = max(0, min(100, int(value)))
+		with suppress(Exception):
+			self._player.setVolume(all=1.0)
+
+
