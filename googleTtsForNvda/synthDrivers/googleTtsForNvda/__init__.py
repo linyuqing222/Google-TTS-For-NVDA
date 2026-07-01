@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from collections.abc import Iterator
 from contextlib import suppress
 import re
@@ -14,7 +14,7 @@ import synthDriverHandler
 import wx
 from logHandler import log
 from nvwave import WavePlayer
-from speech.commands import BreakCommand, IndexCommand, PitchCommand, RateCommand, VolumeCommand
+from speech.commands import BreakCommand, IndexCommand, LangChangeCommand, PitchCommand, RateCommand, VolumeCommand
 from synthDriverHandler import VoiceInfo, synthDoneSpeaking, synthIndexReached
 
 from .bridge import CdpCancelled, ChromeTtsBridge, SAMPLE_RATE
@@ -27,12 +27,15 @@ addonHandler.initTranslation()
 
 _CLAUSE_TARGET_CHARS = 220
 _CLAUSE_MAX_CHARS = 360
-_FAST_FIRST_CLAUSE_TARGET_CHARS = 140
-_FAST_FIRST_CLAUSE_MAX_CHARS = 200
-_FAST_FIRST_CLAUSE_MIN_CHARS = 40
+_FAST_FIRST_CLAUSE_TARGET_CHARS = 100
+_FAST_FIRST_CLAUSE_MAX_CHARS = 160
+_FAST_FIRST_CLAUSE_MIN_CHARS = 30
 _SHORT_CACHE_MAX_CHARS = 200
+_SHORT_CACHE_MAX_ITEMS = 256
+_SHORT_CACHE_MAX_BYTES = 12 * 1024 * 1024
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?;:])\s+")
 _CLAUSE_BOUNDARY_RE = re.compile(r"[,;:]\s+")
+_SpeechRequest = tuple[list[Any], str, int, int, int, threading.Event]
 
 
 class SynthDriver(synthDriverHandler.SynthDriver):
@@ -48,6 +51,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 	supportedCommands = {
 		BreakCommand,
 		IndexCommand,
+		LangChangeCommand,
 		RateCommand,
 		PitchCommand,
 		VolumeCommand,
@@ -75,12 +79,13 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		self.availableLanguages = {speaker.language for speaker in self.catalog.speakers}
 		self._bridge = ChromeTtsBridge(self.catalog)
 		self._player = WavePlayer(channels=1, samplesPerSec=SAMPLE_RATE, bitsPerSample=16)
-		self._cancelEvent = threading.Event()
 		self._speechCondition = threading.Condition()
-		self._pendingSpeech: tuple[list[Any], str, int, int, int, threading.Event] | None = None
+		self._speechQueue: deque[_SpeechRequest] = deque()
+		self._activeCancelEvent: threading.Event | None = None
 		self._shutdownEvent = threading.Event()
 		self._cacheLock = threading.RLock()
 		self._shortAudioCache: OrderedDict[tuple[Any, ...], bytes] = OrderedDict()
+		self._shortAudioCacheBytes = 0
 		self._worker = threading.Thread(
 			name="googleTtsForNvda.speech",
 			target=self._speech_loop,
@@ -128,14 +133,15 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		self.cancel()
 		self._shutdownEvent.set()
 		with self._speechCondition:
-			self._speechCondition.notify()
+			self._speechCondition.notify_all()
 		with suppress(Exception):
 			self._bridge.terminate()
 		with suppress(Exception):
 			self._player.close()
 
 	def speak(self, speechSequence: list[Any]) -> None:
-		self.cancel()
+		with suppress(Exception):
+			self._warmupCancelEvent.set()
 		sequence = list(speechSequence)
 		cancelEvent = threading.Event()
 		voice = self.__voice
@@ -143,15 +149,19 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		pitch = self._pitch
 		volume = self._volume
 		with self._speechCondition:
-			self._cancelEvent = cancelEvent
-			self._pendingSpeech = (sequence, voice, rate, pitch, volume, cancelEvent)
+			if self._shutdownEvent.is_set():
+				return
+			self._speechQueue.append((sequence, voice, rate, pitch, volume, cancelEvent))
 			self._speechCondition.notify()
 
 	def cancel(self) -> None:
 		with self._speechCondition:
-			self._cancelEvent.set()
-			self._pendingSpeech = None
-			self._speechCondition.notify()
+			if self._activeCancelEvent is not None:
+				self._activeCancelEvent.set()
+			for request in self._speechQueue:
+				request[-1].set()
+			self._speechQueue.clear()
+			self._speechCondition.notify_all()
 		with suppress(Exception):
 			self._warmupCancelEvent.set()
 		with suppress(Exception):
@@ -192,6 +202,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 	) -> Iterator[tuple[str, Any]]:
 		textParts: list[str] = []
 		firstTextSegment = True
+		activeVoice = voice
 
 		def flush_text() -> Iterator[tuple[str, Any]]:
 			nonlocal firstTextSegment
@@ -199,7 +210,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			textParts.clear()
 			if not text:
 				return
-			options = self._speech_options(rate, pitch, volume, voice)
+			options = self._speech_options(rate, pitch, volume, activeVoice)
 			for segment in self._iter_text_segments_for_latency(text, firstTextSegment):
 				if cancelEvent.is_set():
 					return
@@ -222,6 +233,11 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 				if cancelEvent.is_set():
 					return
 				yield ("index", item.index)
+			elif itemType is LangChangeCommand:
+				yield from flush_text()
+				if cancelEvent.is_set():
+					return
+				activeVoice = self._voice_for_language(item.lang, voice)
 			elif itemType is RateCommand:
 				yield from flush_text()
 				if cancelEvent.is_set():
@@ -322,14 +338,18 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 	def _speech_loop(self) -> None:
 		while not self._shutdownEvent.is_set():
 			with self._speechCondition:
-				while self._pendingSpeech is None and not self._shutdownEvent.is_set():
+				while not self._speechQueue and not self._shutdownEvent.is_set():
 					self._speechCondition.wait()
 				if self._shutdownEvent.is_set():
 					return
-				request = self._pendingSpeech
-				self._pendingSpeech = None
-			if request is not None:
+				request = self._speechQueue.popleft()
+				self._activeCancelEvent = request[-1]
+			try:
 				self._speak_worker(*request)
+			finally:
+				with self._speechCondition:
+					if self._activeCancelEvent is request[-1]:
+						self._activeCancelEvent = None
 
 	def _speak_worker(
 		self,
@@ -357,9 +377,12 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 				elif kind == "break":
 					self._feed_silence(payload)
 				elif kind == "index":
-					synthIndexReached.notify(synth=self, index=payload)
+					self._sync_player()
+					if not cancelEvent.is_set():
+						synthIndexReached.notify(synth=self, index=payload)
 			if not cancelEvent.is_set():
-				self._player.idle()
+				self._finish_request_audio()
+			if not cancelEvent.is_set():
 				synthDoneSpeaking.notify(synth=self)
 		except CdpCancelled:
 			log.debug("Google TTS speech cancelled.")
@@ -393,6 +416,23 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		if pcm:
 			self._player.feed(pcm)
 
+	def _sync_player(self) -> None:
+		sync = getattr(self._player, "sync", None)
+		if sync is not None:
+			sync()
+			return
+		self._player.idle()
+
+	def _has_queued_speech(self) -> bool:
+		with self._speechCondition:
+			return bool(self._speechQueue)
+
+	def _finish_request_audio(self) -> None:
+		if self._has_queued_speech():
+			self._sync_player()
+			return
+		self._player.idle()
+
 	def _short_cache_key(self, text: str, options: dict[str, Any]) -> tuple[Any, ...] | None:
 		if len(text) > _SHORT_CACHE_MAX_CHARS:
 			return None
@@ -416,9 +456,21 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 	def _put_cached_audio(self, key: tuple[Any, ...], audio: bytes) -> None:
 		if not audio:
 			return
+		if len(audio) > _SHORT_CACHE_MAX_BYTES:
+			return
 		with self._cacheLock:
+			oldAudio = self._shortAudioCache.pop(key, None)
+			if oldAudio is not None:
+				self._shortAudioCacheBytes -= len(oldAudio)
 			self._shortAudioCache[key] = audio
+			self._shortAudioCacheBytes += len(audio)
 			self._shortAudioCache.move_to_end(key)
+			while (
+				len(self._shortAudioCache) > _SHORT_CACHE_MAX_ITEMS
+				or self._shortAudioCacheBytes > _SHORT_CACHE_MAX_BYTES
+			):
+				_, removedAudio = self._shortAudioCache.popitem(last=False)
+				self._shortAudioCacheBytes -= len(removedAudio)
 
 	def _feed_silence(self, milliseconds: int) -> None:
 		if milliseconds <= 0:
@@ -437,6 +489,29 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			"volume": max(0.0, min(1.0, volume / 100.0)),
 			"outputGain": max(0.0, min(2.0, volume / 50.0)),
 		}
+
+	def _voice_for_language(self, lang: str | None, fallbackVoice: str) -> str:
+		if not lang:
+			return fallbackVoice
+		normalizedLang = self._normalize_language(lang)
+		if not normalizedLang:
+			return fallbackVoice
+		fallbackSpeaker = self.catalog.speaker_for_voice(fallbackVoice)
+		if self._normalize_language(fallbackSpeaker.language) == normalizedLang:
+			return fallbackVoice
+		for speaker in self.catalog.speakers:
+			if self._normalize_language(speaker.language) == normalizedLang:
+				return speaker.id
+		rootLang = normalizedLang.split("-", 1)[0]
+		if self._normalize_language(fallbackSpeaker.language).split("-", 1)[0] == rootLang:
+			return fallbackVoice
+		for speaker in self.catalog.speakers:
+			if self._normalize_language(speaker.language).split("-", 1)[0] == rootLang:
+				return speaker.id
+		return fallbackVoice
+
+	def _normalize_language(self, lang: str | None) -> str:
+		return str(lang or "").replace("_", "-").lower()
 
 	def _warm_current_voice_async(self) -> None:
 		options = self._speech_options(self._rate, self._pitch, 0)
@@ -505,5 +580,3 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		self._volume = max(0, min(100, int(value)))
 		with suppress(Exception):
 			self._player.setVolume(all=1.0)
-
-

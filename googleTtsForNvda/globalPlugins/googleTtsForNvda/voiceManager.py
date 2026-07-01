@@ -64,7 +64,9 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 
 		statusRow = wx.BoxSizer(wx.HORIZONTAL)
 		self.statusText = wx.StaticText(self, label=_("Ready."))
+		self.statusText.SetName(_("Status"))
 		self.progressGauge = wx.Gauge(self, range=100)
+		self.progressGauge.SetName(_("Progress"))
 		self.progressGauge.SetValue(0)
 		statusRow.Add(self.statusText, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
 		statusRow.Add(self.progressGauge, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -299,15 +301,10 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 		gui.messageBox(message, _("Google TTS Voice Manager"), wx.OK | wx.ICON_ERROR, self)
 
 	def _refresh_buttons(self) -> None:
-		for control in (
-			self.refreshButton,
-			self.openFolderButton,
-			self.removeButton,
-			self.downloadButton,
-			self.installedList,
-			self.downloadList,
-		):
+		for control in (self.refreshButton, self.openFolderButton, self.installedList, self.downloadList):
 			control.Enable(not self.isBusy)
+		self.removeButton.Enable(not self.isBusy and self.installedList.ItemCount > 0)
+		self.downloadButton.Enable(not self.isBusy and self.downloadList.ItemCount > 0)
 
 	def on_close(self, evt: wx.CloseEvent) -> None:
 		if self.isBusy:

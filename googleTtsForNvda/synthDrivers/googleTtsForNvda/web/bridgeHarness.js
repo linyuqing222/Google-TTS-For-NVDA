@@ -7,9 +7,9 @@
 	let stopped = false;
 	let initPromise = null;
 	const firstAudioPacketSamples = 48;
-	const steadyAudioPacketSamples = 480;
+	const steadyAudioPacketSamples = 240;
 	const synthesisIdlePollMs = 5;
-	const synthesisIdleTailMs = 40;
+	const synthesisIdleTailMs = 25;
 	let emittedAudioPackets = 0;
 	let pendingAudioBuffers = [];
 	let pendingAudioSampleCount = 0;
@@ -311,5 +311,4 @@
 		}
 	};
 })();
-
 

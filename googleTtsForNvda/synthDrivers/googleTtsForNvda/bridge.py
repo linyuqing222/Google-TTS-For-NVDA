@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import base64
+from contextlib import suppress
 import http.server
 import json
 import os
@@ -110,6 +111,11 @@ def _read_json_endpoint(port: int, path: str, method: str = "GET", timeout: floa
 		return json.loads(response.read().decode("utf-8"))
 
 
+def _raise_if_cancelled(cancelEvent: threading.Event | None) -> None:
+	if cancelEvent is not None and cancelEvent.is_set():
+		raise CdpCancelled()
+
+
 class ChromeTtsBridge:
 	def __init__(self, catalog: VoiceCatalog | None = None) -> None:
 		self.catalog = catalog or VoiceCatalog.load()
@@ -156,25 +162,33 @@ class ChromeTtsBridge:
 				return candidate
 		return None
 
-	def ensure_connection(self) -> None:
+	def ensure_connection(self, cancelEvent: threading.Event | None = None) -> None:
 		with self._lock:
+			_raise_if_cancelled(cancelEvent)
 			if self._ws is not None and self._ws.connected:
 				return
-			self._start_server()
-			self._start_chrome()
-			wsUrl = self._get_page_websocket_url()
-			self._ws = websocket.create_connection(wsUrl, timeout=15)
-			self._ws.settimeout(RECV_POLL_TIMEOUT)
-			self._cdp_request("Runtime.enable", timeout=15)
-			self._cdp_request("Page.enable", timeout=15)
-			self._cdp_request("Runtime.addBinding", {"name": BINDING_NAME}, timeout=15)
-			self._wait_until_ready()
+			try:
+				self._start_server()
+				_raise_if_cancelled(cancelEvent)
+				self._start_chrome(cancelEvent)
+				_raise_if_cancelled(cancelEvent)
+				wsUrl = self._get_page_websocket_url(cancelEvent)
+				_raise_if_cancelled(cancelEvent)
+				self._ws = websocket.create_connection(wsUrl, timeout=15)
+				self._ws.settimeout(RECV_POLL_TIMEOUT)
+				self._cdp_request("Runtime.enable", timeout=15, cancelEvent=cancelEvent)
+				self._cdp_request("Page.enable", timeout=15, cancelEvent=cancelEvent)
+				self._cdp_request("Runtime.addBinding", {"name": BINDING_NAME}, timeout=15, cancelEvent=cancelEvent)
+				self._wait_until_ready(cancelEvent)
+			except CdpCancelled:
+				self._close_websocket()
+				raise
 
 	def preload_voice(self, options: dict[str, Any], cancelEvent: threading.Event | None = None) -> dict[str, Any]:
 		package = self.catalog.package_for_voice(str(options["voiceId"]))
 		if not voice_store.is_package_installed(package):
 			raise CdpError(f"Google TTS voice package is not installed: {package.id}")
-		self.ensure_connection()
+		self.ensure_connection(cancelEvent)
 		payload = {
 			"sessionId": f"preload-{time.monotonic_ns()}",
 			"voiceName": options["voiceName"],
@@ -207,7 +221,7 @@ class ChromeTtsBridge:
 		package = self.catalog.package_for_voice(str(options["voiceId"]))
 		if not voice_store.is_package_installed(package):
 			raise CdpError(f"Google TTS voice package is not installed: {package.id}")
-		self.ensure_connection()
+		self.ensure_connection(cancelEvent)
 		sessionId = f"{time.monotonic_ns()}"
 		payload = {
 			"sessionId": sessionId,
@@ -345,9 +359,10 @@ class ChromeTtsBridge:
 		)
 		self._serverThread.start()
 
-	def _start_chrome(self) -> None:
+	def _start_chrome(self, cancelEvent: threading.Event | None = None) -> None:
 		if self._chromeProcess is not None and self._chromeProcess.poll() is None:
 			return
+		_raise_if_cancelled(cancelEvent)
 		chromePath = self.find_chrome()
 		if not chromePath:
 			raise CdpError("Google Chrome was not found. Install Chrome or set CHROME_PATH.")
@@ -374,7 +389,16 @@ class ChromeTtsBridge:
 			pageUrl,
 		]
 		self._chromeProcess = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-		self._debugPort = self._read_devtools_port(devToolsFile)
+		try:
+			self._debugPort = self._read_devtools_port(devToolsFile, cancelEvent)
+		except CdpCancelled:
+			with suppress(Exception):
+				self._chromeProcess.terminate()
+				self._chromeProcess.wait(timeout=2)
+			self._chromeProcess = None
+			self._debugPort = None
+			self._remove_chrome_profile()
+			raise
 
 	def _get_chrome_profile_dir(self) -> Path:
 		if self._profileDir is not None:
@@ -408,8 +432,10 @@ class ChromeTtsBridge:
 			shutil.rmtree(profileDir, ignore_errors=True)
 		except OSError:
 			log.debug("Could not remove Google TTS Chrome session profile.", exc_info=True)
-	def _read_devtools_port(self, devToolsFile: Path) -> int:
+
+	def _read_devtools_port(self, devToolsFile: Path, cancelEvent: threading.Event | None = None) -> int:
 		for _ in range(80):
+			_raise_if_cancelled(cancelEvent)
 			if self._chromeProcess is not None and self._chromeProcess.poll() is not None:
 				exitCode = self._chromeProcess.returncode
 				self._chromeProcess = None
@@ -428,11 +454,12 @@ class ChromeTtsBridge:
 			raise CdpError("Bridge HTTP server is not running.")
 		return f"http://127.0.0.1:{self._serverPort}/"
 
-	def _get_page_websocket_url(self) -> str:
+	def _get_page_websocket_url(self, cancelEvent: threading.Event | None = None) -> str:
 		pageUrl = self._page_url()
 		if self._debugPort is None:
 			raise CdpError("Chrome DevTools port is not ready.")
 		for _ in range(40):
+			_raise_if_cancelled(cancelEvent)
 			targets = _read_json_endpoint(self._debugPort, "/json/list")
 			if isinstance(targets, list):
 				for target in targets:
@@ -518,17 +545,19 @@ class ChromeTtsBridge:
 			except Exception:
 				log.debug("Could not send fast Chrome TTS stop command.", exc_info=True)
 
-	def _wait_until_ready(self) -> None:
+	def _wait_until_ready(self, cancelEvent: threading.Event | None = None) -> None:
 		expression = """
 		typeof window.googleTtsForNvdaSpeak === "function"
 		&& typeof window.googleTtsForNvdaPreload === "function"
 		&& typeof window.googleTtsForNvdaBridge === "function"
 		"""
 		for _ in range(80):
+			_raise_if_cancelled(cancelEvent)
 			response = self._cdp_request(
 				"Runtime.evaluate",
 				{"expression": expression, "returnByValue": True},
 				timeout=5,
+				cancelEvent=cancelEvent,
 			)
 			if response.get("result", {}).get("result", {}).get("value") is True:
 				return
@@ -551,5 +580,3 @@ class ChromeTtsBridge:
 		if exceptionDetails.get("text"):
 			return str(exceptionDetails["text"])
 		return "Chrome DevTools runtime exception."
-
-
