@@ -7,7 +7,7 @@
 	let stopped = false;
 	let initPromise = null;
 	const firstAudioPacketSamples = 48;
-	const steadyAudioPacketSamples = 240;
+	const steadyAudioPacketSamples = 960;
 	const synthesisIdlePollMs = 5;
 	const synthesisIdleTailMs = 25;
 	let emittedAudioPackets = 0;
@@ -262,7 +262,7 @@
 		stopped = false;
 		resetAudioQueue();
 		await ensureEngineInitialized();
-		await window.Uh.onSpeak("", {
+		await window.Uh.onSpeak("a", {
 			voiceName: payload.voiceName,
 			lang: payload.lang,
 			rate: 1,
