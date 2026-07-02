@@ -226,12 +226,31 @@
 		throw new Error("Timed out waiting for Chrome TTS audio.");
 	}
 
+	function getTtsEngine() {
+		if (window.Vh && typeof window.Vh.onSpeak === "function") {
+			return window.Vh;
+		}
+		if (window.Uh && typeof window.Uh.onSpeak === "function") {
+			return window.Uh;
+		}
+		for (const key of Object.getOwnPropertyNames(window)) {
+			try {
+				const val = window[key];
+				if (val && typeof val === "object" && typeof val.onSpeak === "function" && typeof val.init === "function" && typeof val.onStop === "function") {
+					return val;
+				}
+			} catch (_) {}
+		}
+		return null;
+	}
+
 	async function ensureEngineInitialized() {
-		if (!window.Uh) {
+		const engine = getTtsEngine();
+		if (!engine) {
 			throw new Error("Chrome WASM TTS engine was not loaded.");
 		}
 		if (!initPromise) {
-			initPromise = window.Uh.init("google-tts-for-nvda").catch((error) => {
+			initPromise = engine.init("google-tts-for-nvda").catch((error) => {
 				initPromise = null;
 				throw error;
 			});
@@ -242,8 +261,9 @@
 	async function stopActiveSynthesis() {
 		stopped = true;
 		resetAudioQueue();
-		if (window.Uh && typeof window.Uh.onStop === "function") {
-			await window.Uh.onStop();
+		const engine = getTtsEngine();
+		if (engine && typeof engine.onStop === "function") {
+			await engine.onStop();
 		}
 	}
 
@@ -262,7 +282,11 @@
 		stopped = false;
 		resetAudioQueue();
 		await ensureEngineInitialized();
-		await window.Uh.onSpeak("", {
+		const engine = getTtsEngine();
+		if (!engine) {
+			throw new Error("Chrome WASM TTS engine was not loaded.");
+		}
+		await engine.onSpeak("", {
 			voiceName: payload.voiceName,
 			lang: payload.lang,
 			rate: 1,
@@ -278,6 +302,10 @@
 	window.googleTtsForNvdaSpeak = async function googleTtsForNvdaSpeak(payload) {
 		try {
 			await ensureEngineInitialized();
+			const engine = getTtsEngine();
+			if (!engine) {
+				throw new Error("Chrome WASM TTS engine was not loaded.");
+			}
 			if (currentSessionId) {
 				await stopActiveSynthesis();
 			}
@@ -288,7 +316,7 @@
 			stopped = false;
 			resetAudioQueue();
 			emit({ type: "started" });
-			await window.Uh.onSpeak(payload.text, {
+			await engine.onSpeak(payload.text, {
 				voiceName: payload.voiceName,
 				lang: payload.lang,
 				rate: payload.rate,

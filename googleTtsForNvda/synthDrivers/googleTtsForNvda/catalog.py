@@ -10,7 +10,7 @@ from typing import Any
 
 
 BASE_DIR = Path(__file__).resolve().parent
-ENGINE_VERSION = "20260611.1"
+ENGINE_VERSION = "20260625.1"
 ENGINE_DIR = BASE_DIR / "WasmTtsEngine" / ENGINE_VERSION
 CATALOG_PATH = ENGINE_DIR / "voices.json"
 

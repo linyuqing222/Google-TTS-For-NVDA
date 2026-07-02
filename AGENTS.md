@@ -75,7 +75,7 @@ NVDA process
 │  │  └─ bridgeHarness.js
 │  │     Shims chrome.* APIs, calls WASM engine, captures AudioWorklet PCM,
 │  │     sends base64 chunks through the CDP binding
-│  ├─ WasmTtsEngine/20260611.1/
+│  ├─ WasmTtsEngine/20260625.1/
 │  │  ├─ bindings_main.js / .wasm
 │  │  ├─ offscreen_compiled.js
 │  │  ├─ voices.json
@@ -210,8 +210,8 @@ They are required for `SharedArrayBuffer` support. Do not remove or weaken them.
 - `offscreen_compiled.js` expects installed packages at root URLs like `/{packageId}.zvoice`.
 - The bridge HTTP server must route root `.zvoice` requests to `voice_store.voice_dir()`.
 - The runtime `voices.json` written at bridge startup must mark installed packages as `"remote": false` in the generated JSON model so the engine loads local packages.
-- The engine init entry point is `window.Uh.init(extensionId)`.
-- `window.Uh` is an obfuscated symbol from compiled Chrome extension code. Do not rename it. Do not assume it will remain stable across a future engine update.
+- The engine init entry point is called via dynamically resolving the engine object (e.g. `window.Vh.init(extensionId)` in `20260625.1` or `window.Uh.init(...)` in earlier versions).
+- The engine global symbol (`window.Vh`, `window.Uh`, etc.) is an obfuscated name from compiled Chrome extension code that changes across versions. `bridgeHarness.js` resolves this dynamically using `getTtsEngine()`. Do not assume any fixed global name will remain stable across future engine updates.
 - `bridgeHarness.js` should remain strict-mode and IIFE-wrapped.
 - Avoid changing PCM conversion semantics unless fixing a documented audio bug.
 
@@ -235,7 +235,7 @@ They are required for `SharedArrayBuffer` support. Do not remove or weaken them.
 | Downloaded voices | `{configPath}/googleTtsForNvda/voices/` |
 | Runtime voices.json | `{configPath}/googleTtsForNvda/runtime/voices.json` |
 | Chrome profiles | `{configPath}/googleTtsForNvda/chromeProfiles/session-*` |
-| Master catalog | `WasmTtsEngine/20260611.1/voices.json` |
+| Master catalog | `WasmTtsEngine/20260625.1/voices.json` |
 
 ### `voice_store` contract
 
