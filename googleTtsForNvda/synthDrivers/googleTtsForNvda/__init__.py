@@ -570,7 +570,21 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		self._warm_current_voice_async()
 
 	def _get_language(self) -> str:
-		return self.catalog.language_for_voice(self.__voice)
+		lang = self.catalog.language_for_voice(self.__voice)
+		langMap = {
+			"cmn-CN": "zh_CN",
+			"yue-HK": "zh_HK",
+			"ar-XA": "ar",
+			"fil-PH": "tl",
+		}
+		if lang in langMap:
+			return langMap[lang]
+		lowerLang = lang.lower()
+		if lowerLang.startswith("cmn"):
+			return "zh_CN"
+		if lowerLang.startswith("yue"):
+			return "zh_HK"
+		return lang
 
 	def _get_rate(self) -> int:
 		return self._rate
