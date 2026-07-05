@@ -24,6 +24,7 @@ class VoicePackage:
 	compressedSize: int
 	remote: bool
 	speakers: tuple[dict[str, str], ...]
+	dependentVoiceId: str = ""
 
 	@property
 	def fileName(self) -> str:
@@ -88,6 +89,7 @@ class VoiceCatalog:
 					compressedSize=int(item.get("compressedSize") or 0),
 					remote=bool(item.get("remote", True)),
 					speakers=tuple(s for s in speakers if isinstance(s, dict)),
+					dependentVoiceId=_safe_str(item.get("dependentVoiceId")),
 				),
 			)
 		return cls(packages)
@@ -143,6 +145,8 @@ class VoiceCatalog:
 					"remote": False,
 				},
 			)
+			if package.dependentVoiceId:
+				runtimePackages[-1]["dependentVoiceId"] = package.dependentVoiceId
 		return json.dumps(runtimePackages, ensure_ascii=False)
 
 	def voices_by_language(self) -> "OrderedDict[str, list[Speaker]]":
