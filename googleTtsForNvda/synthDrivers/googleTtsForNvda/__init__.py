@@ -31,6 +31,7 @@ addonHandler.initTranslation()
 _SHORT_CACHE_MAX_CHARS = 200000
 _SHORT_CACHE_MAX_ITEMS = 4096
 _SHORT_CACHE_MAX_BYTES = 100 * 1024 * 1024
+_OUTPUT_GAIN_MAKEUP = 2.0
 _SpeechRequest = tuple[list[Any], str, int, int, int, threading.Event]
 _IndexMarker = tuple[Any, int]
 
@@ -168,7 +169,8 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		self.availableVoices = self._build_available_voices()
 		self.availableLanguages = {speaker.language for speaker in self.catalog.speakers}
 		self._bridge = ChromeTtsBridge(self.catalog)
-		self._player = WavePlayer(channels=1, samplesPerSec=SAMPLE_RATE, bitsPerSample=16)
+		self._playerOutputDevice = self._current_output_device()
+		self._player = self._create_wave_player(self._playerOutputDevice)
 		self._speechCondition = threading.Condition()
 		self._speechQueue: deque[_SpeechRequest] = deque()
 		self._activeCancelEvent: threading.Event | None = None
@@ -234,6 +236,8 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			log.exception("Could not show Google Chrome missing message.", exc_info=True)
 
 	def terminate(self) -> None:
+		with suppress(Exception):
+			self._warmupCancelEvent.set()
 		self.cancel()
 		self._shutdownEvent.set()
 		with self._speechCondition:
@@ -247,8 +251,6 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			self._player.close()
 
 	def speak(self, speechSequence: list[Any]) -> None:
-		with suppress(Exception):
-			self._warmupCancelEvent.set()
 		sequence = list(speechSequence)
 		cancelEvent = threading.Event()
 		voice = self.__voice
@@ -270,14 +272,42 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			self._speechQueue.clear()
 			self._speechCondition.notify_all()
 		with suppress(Exception):
-			self._warmupCancelEvent.set()
-		with suppress(Exception):
 			self._player.stop()
 		with suppress(Exception):
 			self._bridge.cancel_current()
 
 	def pause(self, switch: bool) -> None:
 		self._player.pause(switch)
+
+	def _current_output_device(self) -> str:
+		try:
+			return str(config.conf["audio"]["outputDevice"])
+		except Exception:
+			return getattr(WavePlayer, "DEFAULT_DEVICE_KEY", "default")
+
+	def _create_wave_player(self, outputDevice: str) -> WavePlayer:
+		try:
+			return WavePlayer(
+				channels=1,
+				samplesPerSec=SAMPLE_RATE,
+				bitsPerSample=16,
+				outputDevice=outputDevice,
+			)
+		except TypeError:
+			return WavePlayer(
+				channels=1,
+				samplesPerSec=SAMPLE_RATE,
+				bitsPerSample=16,
+			)
+
+	def _ensure_current_output_device(self) -> None:
+		outputDevice = self._current_output_device()
+		if outputDevice == self._playerOutputDevice:
+			return
+		with suppress(Exception):
+			self._player.close()
+		self._playerOutputDevice = outputDevice
+		self._player = self._create_wave_player(outputDevice)
 
 	def _build_available_voices(self) -> "OrderedDict[str, VoiceInfo]":
 		voices: OrderedDict[str, VoiceInfo] = OrderedDict()
@@ -550,6 +580,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 
 	def _feed_audio(self, pcm: bytes) -> None:
 		if pcm:
+			self._ensure_current_output_device()
 			self._player.feed(pcm)
 
 	def _feed_audio_with_indexes(
@@ -657,18 +688,21 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		if milliseconds <= 0:
 			return
 		frameCount = int(SAMPLE_RATE * milliseconds / 1000)
+		self._ensure_current_output_device()
 		self._player.feed(b"\x00\x00" * frameCount)
 
 	def _speech_options(self, rate: int, pitch: int, volume: int, voice: str | None = None) -> dict[str, Any]:
 		speaker = self.catalog.speaker_for_voice(voice or self.__voice)
+		volumeLevel = max(0.0, min(1.0, volume / 100.0))
+		outputGain = max(0.0, min(_OUTPUT_GAIN_MAKEUP, volumeLevel * _OUTPUT_GAIN_MAKEUP))
 		return {
 			"voiceId": speaker.id,
 			"voiceName": speaker.name,
 			"lang": speaker.language,
 			"rate": self._rate_to_chrome(rate),
 			"pitch": self._pitch_to_chrome(pitch),
-			"volume": max(0.0, min(1.0, volume / 100.0)),
-			"outputGain": max(0.0, min(2.0, volume / 50.0)),
+			"volume": volumeLevel,
+			"outputGain": outputGain,
 		}
 
 	def _voice_for_language(self, lang: str | None, fallbackVoice: str) -> str:

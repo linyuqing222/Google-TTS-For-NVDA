@@ -3,11 +3,14 @@
 
 	let currentSessionId = null;
 	let currentOutputGain = 1;
+	let currentLimiterGain = 1;
 	let lastChunkAt = 0;
 	let stopped = false;
 	let initPromise = null;
 	const firstAudioPacketSamples = 24;
 	const steadyAudioPacketSamples = 240;
+	const peakLimiterCeiling = 0.98;
+	const peakLimiterReleaseStep = 0.05;
 	const synthesisIdlePollMs = 5;
 	const synthesisFallbackIdleMs = 250;
 	const workletEmptyDelayMs = 40;
@@ -145,13 +148,34 @@
 		return Math.max(0, Math.min(2, gain));
 	}
 
+	function gainForBuffers(buffers) {
+		let peak = 0;
+		for (const buffer of buffers) {
+			for (let inputIndex = 0; inputIndex < buffer.length; inputIndex++) {
+				peak = Math.max(peak, Math.abs(buffer[inputIndex] * currentOutputGain));
+			}
+		}
+		const targetLimiterGain = peak > peakLimiterCeiling ? peakLimiterCeiling / peak : 1;
+		if (targetLimiterGain < currentLimiterGain) {
+			currentLimiterGain = targetLimiterGain;
+		} else {
+			currentLimiterGain = Math.min(1, currentLimiterGain + peakLimiterReleaseStep);
+		}
+		return currentOutputGain * currentLimiterGain;
+	}
+
+	function limitSample(sample) {
+		return Math.max(-1, Math.min(1, sample));
+	}
+
 	function buffersToPcmBase64(buffers, sampleCount) {
 		const bytes = new Uint8Array(sampleCount * 2);
 		const view = new DataView(bytes.buffer);
 		let outputIndex = 0;
+		const gain = gainForBuffers(buffers);
 		for (const buffer of buffers) {
 			for (let inputIndex = 0; inputIndex < buffer.length; inputIndex++) {
-				const sample = Math.max(-1, Math.min(1, buffer[inputIndex] * currentOutputGain));
+				const sample = limitSample(buffer[inputIndex] * gain);
 				view.setInt16(outputIndex * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
 				outputIndex++;
 			}
@@ -168,6 +192,7 @@
 		pendingAudioBuffers = [];
 		pendingAudioSampleCount = 0;
 		emittedAudioPackets = 0;
+		currentLimiterGain = 1;
 	}
 
 	function handleTtsEngineEvent(event) {
@@ -426,4 +451,3 @@
 		}
 	};
 })();
-
