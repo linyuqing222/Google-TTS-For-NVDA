@@ -19,6 +19,97 @@ from synthDrivers.googleTtsForNvda import voice_store
 
 addonHandler.initTranslation()
 
+LANGUAGE_NAMES: dict[str, str] = {
+	"ar-XA": _("Arabic"),
+	"as-IN": _("Assamese"),
+	"bg-BG": _("Bulgarian"),
+	"bn-BD": _("Bengali (Bangladesh)"),
+	"bn-IN": _("Bengali (India)"),
+	"brx-IN": _("Bodo"),
+	"bs-BA": _("Bosnian"),
+	"ca-ES": _("Catalan"),
+	"cmn-CN": _("Mandarin Chinese (China)"),
+	"cmn-TW": _("Mandarin Chinese (Taiwan)"),
+	"cs-CZ": _("Czech"),
+	"cy-GB": _("Welsh"),
+	"da-DK": _("Danish"),
+	"de-DE": _("German"),
+	"doi-IN": _("Dogri"),
+	"el-GR": _("Greek"),
+	"en-AU": _("English (Australia)"),
+	"en-GB": _("English (UK)"),
+	"en-IN": _("English (India)"),
+	"en-NG": _("English (Nigeria)"),
+	"en-US": _("English (US)"),
+	"es-ES": _("Spanish (Spain)"),
+	"es-US": _("Spanish (US)"),
+	"et-EE": _("Estonian"),
+	"fi-FI": _("Finnish"),
+	"fil-PH": _("Filipino"),
+	"fr-CA": _("French (Canada)"),
+	"fr-FR": _("French (France)"),
+	"gu-IN": _("Gujarati"),
+	"he-IL": _("Hebrew"),
+	"hi-IN": _("Hindi"),
+	"hr-HR": _("Croatian"),
+	"hu-HU": _("Hungarian"),
+	"id-ID": _("Indonesian"),
+	"is-IS": _("Icelandic"),
+	"it-IT": _("Italian"),
+	"ja-JP": _("Japanese"),
+	"jv-ID": _("Javanese"),
+	"km-KH": _("Khmer"),
+	"kn-IN": _("Kannada"),
+	"ko-KR": _("Korean"),
+	"kok-IN": _("Konkani"),
+	"ks-IN": _("Kashmiri"),
+	"lt-LT": _("Lithuanian"),
+	"lv-LV": _("Latvian"),
+	"mai-IN": _("Maithili"),
+	"ml-IN": _("Malayalam"),
+	"mni-IN": _("Manipuri"),
+	"mr-IN": _("Marathi"),
+	"ms-MY": _("Malay"),
+	"nb-NO": _("Norwegian Bokmål"),
+	"ne-NP": _("Nepali"),
+	"nl-BE": _("Flemish"),
+	"nl-NL": _("Dutch"),
+	"or-IN": _("Odia"),
+	"pa-IN": _("Punjabi"),
+	"pl-PL": _("Polish"),
+	"pt-BR": _("Portuguese (Brazil)"),
+	"pt-PT": _("Portuguese (Portugal)"),
+	"ro-RO": _("Romanian"),
+	"ru-RU": _("Russian"),
+	"sa-IN": _("Sanskrit"),
+	"sat-IN": _("Santali"),
+	"sd-IN": _("Sindhi"),
+	"si-LK": _("Sinhala"),
+	"sk-SK": _("Slovak"),
+	"sl-SI": _("Slovenian"),
+	"sq-AL": _("Albanian"),
+	"sr-RS": _("Serbian"),
+	"su-ID": _("Sundanese"),
+	"sv-SE": _("Swedish"),
+	"sw-KE": _("Swahili"),
+	"ta-IN": _("Tamil"),
+	"te-IN": _("Telugu"),
+	"th-TH": _("Thai"),
+	"tr-TR": _("Turkish"),
+	"uk-UA": _("Ukrainian"),
+	"ur-IN": _("Urdu (India)"),
+	"ur-PK": _("Urdu (Pakistan)"),
+	"vi-VN": _("Vietnamese"),
+	"yue-HK": _("Cantonese"),
+}
+
+
+def get_language_display_name(lang_code: str) -> str:
+	for k, v in LANGUAGE_NAMES.items():
+		if k.lower() == lang_code.lower():
+			return v
+	return lang_code
+
 
 class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 	def __init__(
@@ -37,6 +128,8 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 		self.catalog = VoiceCatalog.load()
 		self.installedPackages: list[VoicePackage] = []
 		self.downloadPackages: list[VoicePackage] = []
+		self._allInstalledPackages: list[VoicePackage] = []
+		self._allDownloadPackages: list[VoicePackage] = []
 		self.isBusy = False
 		self._initialPage = initialPage
 		self._lastProgressAnnouncement = -1
@@ -89,6 +182,16 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 	def _build_installed_tab(self) -> None:
 		sizer = wx.BoxSizer(wx.VERTICAL)
 		self.installedPanel.SetSizer(sizer)
+
+		filterRow = wx.BoxSizer(wx.HORIZONTAL)
+		self.installedFilterLabel = wx.StaticText(self.installedPanel, label=_("&Filter by language:"))
+		self.installedLanguageCombo = wx.Choice(self.installedPanel)
+		self.installedLanguageCombo.SetName(_("Filter installed voices by language"))
+		self.installedLanguageCombo.Bind(wx.EVT_CHOICE, self.on_installed_language_filter_changed)
+		filterRow.Add(self.installedFilterLabel, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+		filterRow.Add(self.installedLanguageCombo, 1, wx.ALIGN_CENTER_VERTICAL)
+		sizer.Add(filterRow, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
+
 		self.installedSelectAllCheck = wx.CheckBox(
 			self.installedPanel, label=_("Select &all voices"),
 		)
@@ -108,6 +211,16 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 	def _build_download_tab(self) -> None:
 		sizer = wx.BoxSizer(wx.VERTICAL)
 		self.downloadPanel.SetSizer(sizer)
+
+		filterRow = wx.BoxSizer(wx.HORIZONTAL)
+		self.downloadFilterLabel = wx.StaticText(self.downloadPanel, label=_("&Filter by language:"))
+		self.downloadLanguageCombo = wx.Choice(self.downloadPanel)
+		self.downloadLanguageCombo.SetName(_("Filter downloadable voices by language"))
+		self.downloadLanguageCombo.Bind(wx.EVT_CHOICE, self.on_download_language_filter_changed)
+		filterRow.Add(self.downloadFilterLabel, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+		filterRow.Add(self.downloadLanguageCombo, 1, wx.ALIGN_CENTER_VERTICAL)
+		sizer.Add(filterRow, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
+
 		self.downloadSelectAllCheck = wx.CheckBox(
 			self.downloadPanel, label=_("Select &all voices"),
 		)
@@ -140,20 +253,70 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 			listCtrl.InsertColumn(index, label, width=width)
 		return listCtrl
 
-	def refresh_lists(self) -> None:
-		self.installedPackages = voice_store.installed_packages(self.catalog)
-		installedIds = {pkg.id for pkg in self.installedPackages}
-		self.downloadPackages = [pkg for pkg in self.catalog.packages if pkg.id not in installedIds]
+	def _update_language_combo(self, combo: wx.Choice, packages: list[VoicePackage]) -> None:
+		unique_codes = sorted({pkg.language for pkg in packages}, key=lambda c: get_language_display_name(c).lower())
+		display_names = [_("All")] + [get_language_display_name(code) for code in unique_codes]
+
+		oldIdx = combo.GetSelection()
+		oldSelectionCode = ""
+		if hasattr(combo, "_langCodes") and 0 < oldIdx <= len(combo._langCodes):
+			oldSelectionCode = combo._langCodes[oldIdx - 1]
+
+		combo.Clear()
+		combo.AppendItems(display_names)
+		combo._langCodes = unique_codes
+
+		newIdx = 0
+		if oldSelectionCode and oldSelectionCode in unique_codes:
+			newIdx = unique_codes.index(oldSelectionCode) + 1
+		combo.SetSelection(newIdx)
+
+	def _apply_installed_filter(self) -> None:
+		idx = self.installedLanguageCombo.GetSelection()
+		if idx <= 0 or not hasattr(self.installedLanguageCombo, "_langCodes") or idx > len(self.installedLanguageCombo._langCodes):
+			self.installedPackages = list(self._allInstalledPackages)
+		else:
+			target_code = self.installedLanguageCombo._langCodes[idx - 1]
+			self.installedPackages = [
+				pkg for pkg in self._allInstalledPackages if pkg.language.lower() == target_code.lower()
+			]
 		self._populate_installed_list()
-		self._populate_download_list()
-		self.set_status(
-			_("{installed} installed; {total} available.").format(
-				installed=len(self.installedPackages),
-				total=len(self.catalog.packages),
-			),
-			0,
-		)
 		self._refresh_buttons()
+
+	def _apply_download_filter(self) -> None:
+		idx = self.downloadLanguageCombo.GetSelection()
+		if idx <= 0 or not hasattr(self.downloadLanguageCombo, "_langCodes") or idx > len(self.downloadLanguageCombo._langCodes):
+			self.downloadPackages = list(self._allDownloadPackages)
+		else:
+			target_code = self.downloadLanguageCombo._langCodes[idx - 1]
+			self.downloadPackages = [
+				pkg for pkg in self._allDownloadPackages if pkg.language.lower() == target_code.lower()
+			]
+		self._populate_download_list()
+		self._refresh_buttons()
+
+	def on_installed_language_filter_changed(self, evt: wx.CommandEvent) -> None:
+		self._apply_installed_filter()
+
+	def on_download_language_filter_changed(self, evt: wx.CommandEvent) -> None:
+		self._apply_download_filter()
+
+	def refresh_lists(self) -> None:
+		self._allInstalledPackages = voice_store.installed_packages(self.catalog)
+		installedIds = {pkg.id for pkg in self._allInstalledPackages}
+		self._allDownloadPackages = [pkg for pkg in self.catalog.packages if pkg.id not in installedIds]
+
+		title = _("{installed} installed, {available} available - Google TTS Voice Manager").format(
+			installed=len(self._allInstalledPackages),
+			available=len(self._allDownloadPackages),
+		)
+		self.SetTitle(title)
+
+		self._update_language_combo(self.installedLanguageCombo, self._allInstalledPackages)
+		self._update_language_combo(self.downloadLanguageCombo, self._allDownloadPackages)
+
+		self._apply_installed_filter()
+		self._apply_download_filter()
 
 	def focus_default_control(self) -> None:
 		if self._initialPage == "download":
@@ -172,16 +335,10 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 			self._focus_installed_tab()
 
 	def _focus_installed_tab(self) -> None:
-		if self.installedList.ItemCount:
-			self.installedList.SetFocus()
-		else:
-			self.refreshButton.SetFocus()
+		self.notebook.SetFocus()
 
 	def _focus_download_tab(self) -> None:
-		if self.downloadList.ItemCount:
-			self.downloadList.SetFocus()
-		else:
-			self.refreshButton.SetFocus()
+		self.notebook.SetFocus()
 
 	def _populate_installed_list(self) -> None:
 		self.installedList.DeleteAllItems()
@@ -208,7 +365,7 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 		package: VoicePackage,
 		includeStatus: bool = False,
 	) -> None:
-		listCtrl.InsertItem(index, package.language)
+		listCtrl.InsertItem(index, get_language_display_name(package.language))
 		listCtrl.SetItem(index, 1, package.id)
 		listCtrl.SetItem(index, 2, self._speaker_names(package))
 		listCtrl.SetItem(index, 3, self._format_size(package.compressedSize))
@@ -226,15 +383,9 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 		return _("{size:.1f} MB").format(size=size / 1024 / 1024)
 
 	def _checked_packages(self, listCtrl: wx.ListCtrl, packages: list[VoicePackage]) -> list[VoicePackage]:
-		checked: list[VoicePackage] = []
 		if hasattr(listCtrl, "IsItemChecked"):
 			count = min(listCtrl.ItemCount, len(packages))
-			checked = [packages[i] for i in range(count) if listCtrl.IsItemChecked(i)]
-			if checked:
-				return checked
-		index = listCtrl.GetFirstSelected()
-		if 0 <= index < len(packages):
-			return [packages[index]]
+			return [packages[i] for i in range(count) if listCtrl.IsItemChecked(i)]
 		return []
 
 	def _on_check_all(self, listCtrl: wx.ListCtrl, check: bool) -> None:
@@ -335,7 +486,7 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 	def on_remove_selected(self, evt: wx.CommandEvent) -> None:
 		packages = self._checked_packages(self.installedList, self.installedPackages)
 		if not packages:
-			self.set_status(_("No installed voice packages selected."), 0, announce=True)
+			self.set_status(_("No voice packages selected."), 0, announce=True)
 			return
 		if len(packages) == 1:
 			confirmMsg = _("Remove {package}?").format(package=packages[0].id)
@@ -444,6 +595,8 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 			self.openFolderButton,
 			self.installedList,
 			self.downloadList,
+			self.installedLanguageCombo,
+			self.downloadLanguageCombo,
 		):
 			control.Enable(not self.isBusy)
 		self.installedSelectAllCheck.Enable(not self.isBusy and hasInstalledItems)
