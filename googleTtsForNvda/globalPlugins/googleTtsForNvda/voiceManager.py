@@ -154,7 +154,6 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 		self.notebook.AddPage(self.downloadPanel, _("Download"))
 		self._build_installed_tab()
 		self._build_download_tab()
-		self.notebook.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.on_page_changed)
 
 		statusRow = wx.BoxSizer(wx.HORIZONTAL)
 		self.statusText = wx.StaticText(self, label=_("Ready."))
@@ -327,11 +326,7 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 
 	def show_download_tab(self) -> None:
 		self.notebook.SetSelection(1)
-		wx.CallAfter(self._focus_download_tab)
-
-	def on_page_changed(self, evt: wx.BookCtrlEvent) -> None:
-		evt.Skip()
-		wx.CallAfter(self._focus_active_page)
+		self._focus_download_tab()
 
 	def _focus_active_page(self) -> None:
 		if self.notebook.GetSelection() == 1:
@@ -340,24 +335,10 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 			self._focus_installed_tab()
 
 	def _focus_installed_tab(self) -> None:
-		if self.installedList.ItemCount:
-			self.installedList.SetFocus()
-			self.installedList.Select(0)
-			self.installedList.Focus(0)
-			return
-		if self.removeButton.IsEnabled():
-			self.removeButton.SetFocus()
-			return
-		self.refreshButton.SetFocus()
+		self.notebook.SetFocus()
 
 	def _focus_download_tab(self) -> None:
-		if self.downloadLanguageCombo.IsEnabled():
-			self.downloadLanguageCombo.SetFocus()
-			return
-		if self.downloadButton.IsEnabled():
-			self.downloadButton.SetFocus()
-			return
-		self.refreshButton.SetFocus()
+		self.notebook.SetFocus()
 
 	def _populate_installed_list(self) -> None:
 		self.installedList.DeleteAllItems()
