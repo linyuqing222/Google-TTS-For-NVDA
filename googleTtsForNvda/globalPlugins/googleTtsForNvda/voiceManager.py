@@ -155,6 +155,7 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 		self.notebook.AddPage(self.downloadPanel, _("Download"))
 		self._build_installed_tab()
 		self._build_download_tab()
+		self.notebook.Bind(wx.EVT_KEY_DOWN, self._on_notebook_key_down)
 
 		statusRow = wx.BoxSizer(wx.HORIZONTAL)
 		self.statusText = wx.StaticText(self, label=_("Ready."))
@@ -355,36 +356,22 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
 		direction = -1 if evt.ShiftDown() else 1
 		newPage = (currentPage + direction) % pageCount
 		self.notebook.SetSelection(newPage)
-		tabName = self.notebook.GetPageText(newPage).replace("&", "")
-		ui.message(_("{tab} tab selected").format(tab=tabName))
-		wx.CallLater(100, self._focus_first_control_on_active_page)
-
-	def _focus_first_control_on_active_page(self) -> None:
-		if self.notebook.GetSelection() == 1:
-			candidates: tuple[wx.Window, ...] = (
-				self.downloadLanguageCombo,
-				self.downloadSelectAllCheck,
-				self.downloadList,
-				self.downloadButton,
-			)
-		else:
-			candidates = (
-				self.installedLanguageCombo,
-				self.installedSelectAllCheck,
-				self.installedList,
-				self.removeButton,
-			)
-		for control in candidates:
-			if self._can_focus(control):
-				control.SetFocus()
-				return
 		self.notebook.SetFocus()
 
-	def _can_focus(self, control: wx.Window) -> bool:
-		if not control.IsEnabled() or not control.IsShown():
-			return False
-		canAcceptFocus = getattr(control, "CanAcceptFocus", None)
-		return bool(canAcceptFocus()) if callable(canAcceptFocus) else True
+	def _on_notebook_key_down(self, evt: wx.KeyEvent) -> None:
+		key = evt.GetKeyCode()
+		if key in (wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT):
+			pageCount = self.notebook.GetPageCount()
+			if pageCount > 1:
+				currentPage = self.notebook.GetSelection()
+				if currentPage == wx.NOT_FOUND:
+					currentPage = 0
+				direction = -1 if key in (wx.WXK_UP, wx.WXK_LEFT) else 1
+				newPage = (currentPage + direction) % pageCount
+				self.notebook.SetSelection(newPage)
+				self.notebook.SetFocus()
+			return
+		evt.Skip()
 
 	def _populate_installed_list(self) -> None:
 		self.installedList.DeleteAllItems()
