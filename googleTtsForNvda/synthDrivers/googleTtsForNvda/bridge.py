@@ -209,9 +209,14 @@ class ChromeTtsBridge:
 
 	@classmethod
 	def find_chrome(cls) -> str | None:
-		candidates = [os.environ.get("CHROME_PATH", "")]
+		candidates = [
+			os.environ.get("EDGE_PATH", ""),
+			os.environ.get("CHROME_PATH", ""),
+		]
 		if winreg is not None:
 			registryKeys = [
+				(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"),
+				(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"),
 				(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"),
 				(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"),
 			]
@@ -224,6 +229,12 @@ class ChromeTtsBridge:
 					pass
 		candidates.extend(
 			[
+				str(Path(os.environ.get("PROGRAMFILES", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe"),
+				str(Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe"),
+				str(Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe"),
+				shutil.which("msedge.exe") or "",
+				shutil.which("msedge") or "",
+
 				str(Path(os.environ.get("PROGRAMFILES", "")) / "Google" / "Chrome" / "Application" / "chrome.exe"),
 				str(Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Google" / "Chrome" / "Application" / "chrome.exe"),
 				str(Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "Application" / "chrome.exe"),
@@ -328,7 +339,7 @@ class ChromeTtsBridge:
 			eventType = event.get("type")
 			if eventType == "started":
 				log.debug(
-					"Google TTS session %s started in Chrome after %.1f ms.",
+					"Google TTS session %s started in Chromium after %.1f ms.",
 					sessionId,
 					(time.perf_counter() - startedAt) * 1000,
 				)
@@ -452,7 +463,7 @@ class ChromeTtsBridge:
 		_raise_if_cancelled(cancelEvent)
 		chromePath = self.find_chrome()
 		if not chromePath:
-			raise CdpError("Google Chrome was not found. Install Chrome or set CHROME_PATH.")
+			raise CdpError("Microsoft Edge or Google Chrome was not found. Install Chrome or set CHROME_PATH.")
 		profileDir = self._get_chrome_profile_dir()
 		devToolsFile = profileDir / "DevToolsActivePort"
 		try:
