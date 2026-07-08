@@ -172,6 +172,8 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		rate = self._rate
 		pitch = self._pitch
 		volume = self._volume
+		with suppress(Exception):
+			self._warmupCancelEvent.set()
 		with self._speechCondition:
 			if self._shutdownEvent.is_set():
 				return
@@ -477,7 +479,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			text,
 			options,
 			on_audio,
-			None if cacheKey is not None else cancelEvent,
+			cancelEvent,
 			onMark=on_mark if hasInternalIndexes else None,
 		)
 
