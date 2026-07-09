@@ -12,12 +12,14 @@
 	const peakLimiterCeiling = 0.98;
 	const peakLimiterReleaseStep = 0.05;
 	const synthesisIdlePollMs = 2;
-	const synthesisFallbackIdleMs = 80;
-	const workletEmptyDelayMs = 40;
+	const synthesisGeneratingEmptyDelayMs = 500;
+	const synthesisFinishedIdleMs = 80;
 	let emittedAudioPackets = 0;
 	let pendingAudioBuffers = [];
 	let pendingAudioSampleCount = 0;
 	let sawSynthesisEnd = false;
+	let synthesisGenerating = false;
+	let currentAudioPort = null;
 	let currentEndResolver = null;
 	const messageListeners = [];
 
@@ -227,7 +229,7 @@
 			if (!stopped && typeof port.onmessage === "function") {
 				port.onmessage({ data: { type: "empty" } });
 			}
-		}, workletEmptyDelayMs);
+		}, synthesisGenerating ? synthesisGeneratingEmptyDelayMs : synthesisFinishedIdleMs);
 	}
 
 	function flushAudioQueue() {
@@ -268,6 +270,9 @@
 							clearTimeout(this._emptyTimer);
 							this._emptyTimer = null;
 						}
+						if (currentAudioPort === this) {
+							currentAudioPort = null;
+						}
 						return;
 					}
 					if (message.command !== "addBuffer" || !message.buffer) {
@@ -277,6 +282,7 @@
 						? message.buffer
 						: new Float32Array(message.buffer);
 					lastChunkAt = performance.now();
+					currentAudioPort = this;
 					queueAudio(samples);
 					scheduleWorkletEmpty(this);
 				},
@@ -302,7 +308,7 @@
 				setTimeout(resolve, synthesisIdlePollMs);
 			});
 			currentEndResolver = null;
-			if (lastChunkAt > 0 && performance.now() - lastChunkAt >= synthesisFallbackIdleMs) {
+			if (lastChunkAt > 0 && performance.now() - lastChunkAt >= synthesisFinishedIdleMs) {
 				return;
 			}
 		}
@@ -360,6 +366,7 @@
 
 	async function stopActiveSynthesis() {
 		stopped = true;
+		synthesisGenerating = false;
 		if (currentEndResolver) {
 			currentEndResolver();
 			currentEndResolver = null;
@@ -385,6 +392,7 @@
 		lastChunkAt = 0;
 		stopped = false;
 		sawSynthesisEnd = false;
+		synthesisGenerating = false;
 		resetAudioQueue();
 		await ensureEngineInitialized();
 		const engine = getTtsEngine();
@@ -400,13 +408,21 @@
 			}
 			return { success: true, preloaded: true, cached: true };
 		}
-		await engine.onSpeak("", {
-			voiceName: payload.voiceName,
-			lang: payload.lang,
-			rate: 1,
-			pitch: 1,
-			volume: 0,
-		});
+		synthesisGenerating = true;
+		try {
+			await engine.onSpeak("", {
+				voiceName: payload.voiceName,
+				lang: payload.lang,
+				rate: 1,
+				pitch: 1,
+				volume: 0,
+			});
+		} finally {
+			synthesisGenerating = false;
+		}
+		if (lastChunkAt > 0) {
+			scheduleWorkletEmpty(currentAudioPort);
+		}
 		readyVoices.add(payload.voiceName);
 		if (currentSessionId === payload.sessionId) {
 			currentSessionId = null;
@@ -437,15 +453,24 @@
 			lastChunkAt = 0;
 			stopped = false;
 			sawSynthesisEnd = false;
+			synthesisGenerating = false;
 			resetAudioQueue();
 			emit({ type: "started" });
-			await engine.onSpeak(payload.text, {
-				voiceName: payload.voiceName,
-				lang: payload.lang,
-				rate: payload.rate,
-				pitch: payload.pitch,
-				volume: payload.volume,
-			});
+			synthesisGenerating = true;
+			try {
+				await engine.onSpeak(payload.text, {
+					voiceName: payload.voiceName,
+					lang: payload.lang,
+					rate: payload.rate,
+					pitch: payload.pitch,
+					volume: payload.volume,
+				});
+			} finally {
+				synthesisGenerating = false;
+			}
+			if (lastChunkAt > 0) {
+				scheduleWorkletEmpty(currentAudioPort);
+			}
 			readyVoices.add(payload.voiceName);
 			await waitForSynthesisComplete(120000);
 			flushAudioQueue();
