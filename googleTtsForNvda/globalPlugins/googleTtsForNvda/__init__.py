@@ -4,15 +4,23 @@ from __future__ import annotations
 from typing import Any
 
 import addonHandler
+import config
 import globalPluginHandler
 import globalVars
 import gui
 import wx
 
+from synthDrivers.googleTtsForNvda.bridge import CONFIG_BROWSER_RUNTIME, CONFIG_SECTION, DEFAULT_BROWSER_RUNTIME
+
+from .settings import GoogleTtsSettingsPanel
 from .voiceManager import VoiceManagerDialog
 
 
 addonHandler.initTranslation()
+
+config.conf.spec[CONFIG_SECTION] = {
+	CONFIG_BROWSER_RUNTIME: f"string(default={DEFAULT_BROWSER_RUNTIME})",
+}
 
 _dialog: VoiceManagerDialog | None = None
 
@@ -66,6 +74,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		super().__init__()
 		self.voiceManagerMenuItem: wx.MenuItem | None = None
 		if not globalVars.appArgs.secure:
+			if GoogleTtsSettingsPanel not in gui.settingsDialogs.NVDASettingsDialog.categoryClasses:
+				gui.settingsDialogs.NVDASettingsDialog.categoryClasses.append(GoogleTtsSettingsPanel)
 			self.voiceManagerMenuItem = gui.mainFrame.sysTrayIcon.toolsMenu.Append(
 				wx.ID_ANY,
 				_("Google TTS voice manager..."),
@@ -75,6 +85,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def terminate(self) -> None:
 		_close_voice_manager()
+		try:
+			gui.settingsDialogs.NVDASettingsDialog.categoryClasses.remove(GoogleTtsSettingsPanel)
+		except ValueError:
+			pass
 		if self.voiceManagerMenuItem is not None:
 			try:
 				gui.mainFrame.sysTrayIcon.Unbind(wx.EVT_MENU, source=self.voiceManagerMenuItem)

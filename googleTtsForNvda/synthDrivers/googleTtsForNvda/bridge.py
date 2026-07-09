@@ -32,6 +32,11 @@ except Exception:  # pragma: no cover - used by the standalone smoke test.
 
 	log = logging.getLogger("googleTtsForNvda")
 
+try:
+	import config  # type: ignore
+except Exception:  # pragma: no cover - used by standalone smoke tests.
+	config = None  # type: ignore
+
 from .catalog import ENGINE_DIR, VoiceCatalog
 from . import voice_store
 
@@ -48,6 +53,16 @@ LOCAL_CACHE_DIR_NAME = "googleTtsForNvda"
 CHROME_PROFILE_DIR_NAME = "chromeProfiles"
 EDGE_PROFILE_DIR_NAME = "edgeProfiles"
 PERSISTENT_PROFILE_DIR_NAME = "persistentSession"
+CONFIG_SECTION = "googleTtsForNvda"
+CONFIG_BROWSER_RUNTIME = "browserRuntime"
+BROWSER_RUNTIME_EDGE = "edge"
+BROWSER_RUNTIME_CHROME = "chrome"
+DEFAULT_BROWSER_RUNTIME = BROWSER_RUNTIME_EDGE
+BROWSER_RUNTIME_LABELS = {
+	BROWSER_RUNTIME_EDGE: "Microsoft Edge",
+	BROWSER_RUNTIME_CHROME: "Google Chrome",
+}
+BROWSER_RUNTIMES = (BROWSER_RUNTIME_EDGE, BROWSER_RUNTIME_CHROME)
 
 if str(WEBSOCKET_CLIENT_DIR) not in sys.path:
 	sys.path.insert(1, str(WEBSOCKET_CLIENT_DIR))
@@ -195,6 +210,126 @@ def _elevate_chrome_priority(processId: int) -> None:
 		log.debug("Could not elevate Google TTS Chrome process priority.", exc_info=True)
 
 
+def _normalize_browser_runtime(runtime: str | None) -> str:
+	runtime = str(runtime or "").strip().lower()
+	if runtime in BROWSER_RUNTIMES:
+		return runtime
+	return DEFAULT_BROWSER_RUNTIME
+
+
+def configured_browser_runtime() -> str:
+	if config is None:
+		return DEFAULT_BROWSER_RUNTIME
+	try:
+		return _normalize_browser_runtime(config.conf[CONFIG_SECTION][CONFIG_BROWSER_RUNTIME])
+	except Exception:
+		return DEFAULT_BROWSER_RUNTIME
+
+
+def set_configured_browser_runtime(runtime: str) -> str:
+	runtime = _normalize_browser_runtime(runtime)
+	if config is None:
+		return runtime
+	try:
+		config.conf[CONFIG_SECTION][CONFIG_BROWSER_RUNTIME] = runtime
+	except Exception:
+		pass
+	try:
+		baseProfile = config.conf.profiles[0]
+		if CONFIG_SECTION not in baseProfile:
+			baseProfile[CONFIG_SECTION] = {}
+		baseProfile[CONFIG_SECTION][CONFIG_BROWSER_RUNTIME] = runtime
+	except Exception:
+		pass
+	return runtime
+
+
+def _runtime_fallback_order(runtime: str | None = None) -> tuple[str, str]:
+	preferred = _normalize_browser_runtime(runtime)
+	fallback = BROWSER_RUNTIME_CHROME if preferred == BROWSER_RUNTIME_EDGE else BROWSER_RUNTIME_EDGE
+	return preferred, fallback
+
+
+def _registry_app_paths(executableName: str) -> list[str]:
+	if winreg is None:
+		return []
+	paths: list[str] = []
+	registryKeys = [
+		(winreg.HKEY_LOCAL_MACHINE, fr"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{executableName}"),
+		(winreg.HKEY_CURRENT_USER, fr"Software\Microsoft\Windows\CurrentVersion\App Paths\{executableName}"),
+	]
+	for hive, subKey in registryKeys:
+		try:
+			with winreg.OpenKey(hive, subKey) as key:
+				path, _ = winreg.QueryValueEx(key, "")
+				paths.append(str(path))
+		except OSError:
+			pass
+	return paths
+
+
+def _browser_candidates(runtime: str) -> list[str]:
+	runtime = _normalize_browser_runtime(runtime)
+	if runtime == BROWSER_RUNTIME_EDGE:
+		executableName = "msedge.exe"
+		envPath = os.environ.get("EDGE_PATH", "")
+		commonPaths = [
+			str(Path(os.environ.get("PROGRAMFILES", "")) / "Microsoft" / "Edge" / "Application" / executableName),
+			str(Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Microsoft" / "Edge" / "Application" / executableName),
+			str(Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Edge" / "Application" / executableName),
+			shutil.which("msedge.exe") or "",
+			shutil.which("msedge") or "",
+		]
+	else:
+		executableName = "chrome.exe"
+		envPath = os.environ.get("CHROME_PATH", "")
+		commonPaths = [
+			str(Path(os.environ.get("PROGRAMFILES", "")) / "Google" / "Chrome" / "Application" / executableName),
+			str(Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Google" / "Chrome" / "Application" / executableName),
+			str(Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "Application" / executableName),
+			shutil.which("chrome.exe") or "",
+			shutil.which("chrome") or "",
+		]
+	return [envPath, *_registry_app_paths(executableName), *commonPaths]
+
+
+def browser_path_for_runtime(runtime: str) -> str | None:
+	for candidate in _browser_candidates(runtime):
+		if candidate and Path(candidate).is_file():
+			return candidate
+	return None
+
+
+def browser_runtime_available(runtime: str) -> bool:
+	return browser_path_for_runtime(runtime) is not None
+
+
+def browser_availability() -> dict[str, bool]:
+	return {runtime: browser_runtime_available(runtime) for runtime in BROWSER_RUNTIMES}
+
+
+def browser_runtime_for_path(browserPath: str) -> str:
+	exeName = Path(browserPath).name.lower()
+	if exeName in ("msedge.exe", "msedge"):
+		return BROWSER_RUNTIME_EDGE
+	return BROWSER_RUNTIME_CHROME
+
+
+def effective_browser_runtime(runtime: str | None = None) -> str | None:
+	path = find_browser(runtime)
+	if path is None:
+		return None
+	return browser_runtime_for_path(path)
+
+
+def find_browser(runtime: str | None = None) -> str | None:
+	for candidateRuntime in _runtime_fallback_order(runtime or configured_browser_runtime()):
+		path = browser_path_for_runtime(candidateRuntime)
+		if path:
+			return path
+	return None
+
+
 class ChromeTtsBridge:
 	def __init__(self, catalog: VoiceCatalog | None = None) -> None:
 		self.catalog = catalog or VoiceCatalog.load()
@@ -214,43 +349,7 @@ class ChromeTtsBridge:
 
 	@classmethod
 	def find_chrome(cls) -> str | None:
-		candidates = [
-			os.environ.get("EDGE_PATH", ""),
-			os.environ.get("CHROME_PATH", ""),
-		]
-		if winreg is not None:
-			registryKeys = [
-				(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"),
-				(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"),
-				(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"),
-				(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"),
-			]
-			for hive, subKey in registryKeys:
-				try:
-					with winreg.OpenKey(hive, subKey) as key:
-						path, _ = winreg.QueryValueEx(key, "")
-						candidates.append(path)
-				except OSError:
-					pass
-		candidates.extend(
-			[
-				str(Path(os.environ.get("PROGRAMFILES", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe"),
-				str(Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe"),
-				str(Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe"),
-				shutil.which("msedge.exe") or "",
-				shutil.which("msedge") or "",
-
-				str(Path(os.environ.get("PROGRAMFILES", "")) / "Google" / "Chrome" / "Application" / "chrome.exe"),
-				str(Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Google" / "Chrome" / "Application" / "chrome.exe"),
-				str(Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "Application" / "chrome.exe"),
-				shutil.which("chrome.exe") or "",
-				shutil.which("chrome") or "",
-			],
-		)
-		for candidate in candidates:
-			if candidate and Path(candidate).is_file():
-				return candidate
-		return None
+		return find_browser()
 
 	def ensure_connection(self) -> None:
 		with self._lock:

@@ -101,7 +101,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			raise RuntimeError("Installed Google TTS voice packages do not contain usable voices.")
 		if ChromeTtsBridge.find_chrome() is None:
 			wx.CallAfter(self._show_missing_chrome_error)
-			raise RuntimeError("Google Chrome was not found.")
+			raise RuntimeError("Microsoft Edge or Google Chrome was not found.")
 		self.availableVoices = self._build_available_voices()
 		self.availableLanguages = {speaker.language for speaker in self.catalog.speakers}
 		self._bridge = ChromeTtsBridge(self.catalog)
@@ -174,7 +174,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			import gui
 
 			gui.messageBox(
-				_("Google Chrome was not found. Install Google Chrome or set CHROME_PATH to chrome.exe."),
+				_("Microsoft Edge or Google Chrome was not found. Install one of them or set EDGE_PATH/CHROME_PATH."),
 				_("Google TTS For NVDA"),
 				wx.OK | wx.ICON_ERROR,
 				gui.mainFrame,
