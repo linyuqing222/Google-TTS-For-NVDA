@@ -2,7 +2,7 @@
 
 An NVDA screen reader synthesizer add-on that uses Google's WebAssembly (WASM) Text-to-Speech engine locally through a supported browser runtime (Microsoft Edge or Google Chrome) to provide high-quality, natural-sounding voices offline.
 
-This project grew from a simple dream: making Google TTS usable as a practical, everyday NVDA synthesizer on Windows computers.
+This project was created to make Google's high-quality local WebAssembly Text-to-Speech engine usable as a practical, everyday NVDA synthesizer on Windows computers.
 
 *This add-on is co-developed by [Nguyen Anh Duc](https://github.com/nguyenanhduc09), [Dao Duc Trung](https://github.com/daoductrung) and [Pham Hung Vuong](https://github.com/phamhungvuong302).*
 
@@ -10,9 +10,9 @@ This project grew from a simple dream: making Google TTS usable as a practical, 
 
 ## Current Status
 
-This add-on is currently being actively maintained and developed by Nguyen Anh Duc, Dao Duc Trung and Pham Hung Vuong. While functional, there are still a few known issues we are working on:
-* Voices may load slowly upon the first initialization.
-* Pauses and speech segmentation might occasionally be incorrect.
+The add-on is actively maintained and fully functional. However, there are a few known limitations currently being addressed:
+* Voices may load slowly upon first initialization.
+* Pauses and speech segmentation might occasionally be slightly incorrect.
 
 We highly welcome and appreciate any feedback from the community to help us improve!
 
@@ -27,6 +27,7 @@ We highly welcome and appreciate any feedback from the community to help us impr
 * **Voice Manager**: Check, download, or remove voice packages in batches using a multi-select checkbox interface.
 * **Background Operations**: Non-blocking downloads and removals on background threads.
 * **Accessible Shortcut**: Press **`NVDA+Ctrl+Shift+G`** to open the Voice Manager instantly.
+* **Browser Runtime Selection**: Choose between Microsoft Edge and Google Chrome as the underlying engine directly from the NVDA settings panel.
 
 ---
 
@@ -49,12 +50,19 @@ We highly welcome and appreciate any feedback from the community to help us impr
 
 ## Configuration Settings
 
+### Synthesizer Settings
+
 The synthesizer supports the standard NVDA Speech settings ring:
 * **Voice**: Choose from your installed speaker/language voice packages.
 * **Rate**: Speech rate (maps to the browser runtime's 0.35x - 2.0x speed).
 * **Rate Boost**: Enable to double the computed speech rate for fast reading.
 * **Pitch**: Speech pitch adjustment.
 * **Volume**: Speech volume (maps to the browser runtime's 0.0 - 1.0 volume range).
+
+### Browser Runtime Settings
+
+The add-on includes a custom settings panel under **NVDA Settings (NVDA Menu -> Preferences -> Settings) -> Google TTS For NVDA**:
+* **Browser runtime**: Select which browser runtime to use (Microsoft Edge or Google Chrome). The panel shows the availability status of each browser on your system.
 
 ---
 
@@ -71,24 +79,33 @@ build.bat
 ```
 
 The build script reads the version from `googleTtsForNvda/manifest.ini`, builds all add-on locales non-interactively, checks Python and JavaScript syntax, verifies that no `.zvoice` voice packages are inside the source tree, removes generated `__pycache__` folders, and packages the add-on.
-
-The verified `.nvda-addon` package will be created in the `dist/` directory, with a name like:
-
-```text
-dist/googleTtsForNvda-0.3.nvda-addon
-```
-
-If you only want to validate or update translation files without packaging the add-on, use `build_i18n.py` directly. Running `python build_i18n.py` opens the numbered translation menu. For automation, use `python build_i18n.py --check --all-languages` to check all locales or `python build_i18n.py --all-languages` to build generated translation files for all locales.
-
----
-
-## Contributing
-
-We strongly welcome contributions from other developers! If you have ideas, bug fixes, or improvements, please feel free to open an issue or submit a pull request.
-
-Translations are welcome too. If you use Poedit to edit a translation and save synchronized `.po` and `.mo` files, `build_i18n.py` can be used to validate the result. If you use another translation tool that edits `.po` without generating or synchronizing `.mo`, the i18n script can build the generated files for you. Running `python build_i18n.py` opens the numbered translation menu by default, with broad choices first: all add-on locales before individual locales, and default/all checks before individual check categories. See [`TRANSLATING.md`](TRANSLATING.md) for the add-on's translation layout, validation commands, and optional `languageSort.json` files that let Voice Manager display language names in a natural order for each locale without changing catalog data.
-
----
+ 
+ The verified `.nvda-addon` package will be created in the `dist/` directory, with a name like:
+ 
+ ```text
+ dist/googleTtsForNvda-0.3.nvda-addon
+ ```
+ 
+ ---
+ 
+ ## Translation
+ 
+ We warmly welcome translations for new languages or updates to existing ones!
+ 
+ If you would like to translate this add-on into your local language:
+ * Read the detailed translation guide in [TRANSLATING.md](TRANSLATING.md) to understand the layout, workflow, and how to use translation tools (such as Poedit).
+ * Use the helper script `build_i18n.py` to validate or build your translation files:
+   * Running `python build_i18n.py` opens an interactive menu to guide you.
+   * Running `python build_i18n.py --check --all-languages` validates all existing translations.
+   * Running `python build_i18n.py --all-languages` compiles and updates translation files for all locales.
+ 
+ ---
+ 
+ ## Contributing
+ 
+ We strongly welcome contributions from other developers! If you have ideas, bug fixes, or improvements, please feel free to open an issue or submit a pull request.
+ 
+ ---
 
 ## Contact
 
