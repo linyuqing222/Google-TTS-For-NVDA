@@ -21,7 +21,7 @@ DEFAULT_NVDA_LOCALE_DIRS = (
 	Path(r"C:\Program Files\NVDA\locale"),
 	Path(r"C:\Program Files (x86)\NVDA\locale"),
 )
-MANIFEST_KEYS = ("summary", "description")
+MANIFEST_KEYS = ("summary", "description", "changelog")
 PLACEHOLDER_RE = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}")
 TRANSLATABLE_SOURCE_DIRS = (
 	ADDON_DIR / "globalPlugins" / "googleTtsForNvda",
@@ -308,19 +308,16 @@ def _compile_mo(catalog: dict[str, str], output_path: Path) -> None:
 
 
 def _manifest_values() -> dict[str, str]:
+	text = MANIFEST_SOURCE.read_text(encoding="utf-8")
 	values: dict[str, str] = {}
-	for raw_line in MANIFEST_SOURCE.read_text(encoding="utf-8").splitlines():
-		line = raw_line.strip()
-		for key in MANIFEST_KEYS:
-			prefix = f"{key} ="
-			if not line.startswith(prefix):
-				continue
-			value = line[len(prefix) :].strip()
-			if value.startswith('"""') and value.endswith('"""'):
-				value = value[3:-3]
-			elif value.startswith('"') and value.endswith('"'):
-				value = value[1:-1]
-			values[key] = value
+	for key in MANIFEST_KEYS:
+		match = re.search(rf'^{re.escape(key)}\s*=\s*"""(.*?)"""', text, re.MULTILINE | re.DOTALL)
+		if match:
+			values[key] = match.group(1)
+		else:
+			match_single = re.search(rf'^{re.escape(key)}\s*=\s*"(.*?)"', text, re.MULTILINE)
+			if match_single:
+				values[key] = match_single.group(1)
 	return values
 
 
@@ -333,11 +330,15 @@ def _write_translated_manifest(language_dir: Path, catalog: dict[str, str]) -> N
 	summary = catalog.get(values["summary"], values["summary"])
 	description = catalog.get(values["description"], values["description"])
 	description = description.replace('"""', r"\"\"\"")
-	manifest = (
-		f"summary = {_quote_manifest_value(summary)}\n"
-		f'description = """{description}"""\n'
-	)
-	(language_dir / "manifest.ini").write_text(manifest, encoding="utf-8")
+	lines = [
+		f"summary = {_quote_manifest_value(summary)}\n",
+		f'description = """{description}"""\n',
+	]
+	if "changelog" in values:
+		changelog = catalog.get(values["changelog"], values["changelog"])
+		changelog = changelog.replace('"""', r"\"\"\"")
+		lines.append(f'changelog = """{changelog}"""\n')
+	(language_dir / "manifest.ini").write_text("".join(lines), encoding="utf-8")
 
 
 def _supported_nvda_languages(locale_dir: Path) -> set[str] | None:
