@@ -1,18 +1,102 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="utf-8">
+	<meta charset="UTF-8">
 	<title>Google TTS For NVDA</title>
 </head>
 <body>
 	<h1>Google TTS For NVDA</h1>
-	<p><strong>Developers:</strong> Nguyen Anh Duc, Dao Duc Trung and Pham Hung Vuong.</p>
-	<p>Google TTS For NVDA uses Google's WASM TTS engine locally through a managed headless browser runtime: Microsoft Edge or Google Chrome.</p>
-	<p>This add-on grew from a simple dream: making Google TTS usable as a practical, everyday NVDA synthesizer on Windows computers.</p>
-	<p>The add-on exposes Google TTS voices as an NVDA synthesizer and includes a Tools menu Voice Manager for downloading or removing voice packages listed in the bundled <code>voices.json</code> catalog.</p>
-	<p>Voice packages that are known not to work with the bundled WASM TTS engine are marked as not supported in Voice Manager and are not exposed as synthesizer voices.</p>
-	<p>Settings include voice, rate, rate boost, pitch, volume, and browser runtime. Voice packages are downloaded only from the Google TTS Voice Manager.</p>
-	<p>Repeated short phrases under 5000 characters are cached in RAM for the current NVDA session only. The cache is volatile and is cleared automatically when NVDA exits or the computer restarts.</p>
-	<p>For translation work, Poedit can edit a locale and save synchronized <code>.po</code> and <code>.mo</code> files; in that workflow, <code>build_i18n.py</code> can be used to validate the translation. If another translation tool edits <code>.po</code> files without generating or synchronizing <code>.mo</code>, the i18n script can build the generated translation files.</p>
+	<p><strong>Authors:</strong> Nguyen Anh Duc, Dao Duc Trung, and Pham Hung Vuong</p>
+	<p>For a long time, screen reader users have wished they could use familiar voices from Google's text-to-speech technology on NVDA for Windows, similar to the experience on Android screen readers.</p>
+	<p><strong>Google TTS For NVDA</strong> was created to fulfill that wish. By leveraging Google's text-to-speech technology through WebAssembly (WASM), running in a background browser runtime environment (Microsoft Edge or Google Chrome), this add-on brings familiar, natural Google voices to enhance your daily computer use.</p>
+	<p>Once your desired voice packages are downloaded, the add-on operates entirely offline on your computer, providing responsive speech without requiring a continuous internet connection.</p>
+
+	<h2>Key Features</h2>
+	<ul>
+		<li><strong>Fully offline operation:</strong> All speech generation is processed locally on your computer. Once your desired voice packages are downloaded, no internet connection is required.</li>
+		<li><strong>Diverse languages and voices:</strong> Provides multiple voice packages across various languages, including Chrome OS voice packages (low latency, ideal for fast navigation) and Google Natural voice packages (natural intonation, ideal for reading long documents).</li>
+		<li><strong>Fast response and low latency:</strong> Optimized text segmentation and smart audio buffering so NVDA responds instantly when typing and navigating.</li>
+		<li><strong>Google TTS Voice Manager:</strong> Easily browse, download, or remove voice packages in batches through an accessible dialog.</li>
+		<li><strong>Quick Shortcut:</strong> Press <kbd>NVDA+Ctrl+Shift+G</kbd> anywhere to open Google TTS Voice Manager instantly.</li>
+		<li><strong>Browser Selection:</strong> Choose Microsoft Edge or Google Chrome as the background browser runtime directly in NVDA settings.</li>
+	</ul>
+
+	<h2>System Requirements</h2>
+	<ul>
+		<li><strong>NVDA:</strong> Version 2024.1 or newer.</li>
+		<li><strong>Browser:</strong> Microsoft Edge or Google Chrome installed on your computer.</li>
+	</ul>
+
+	<h2>Quick Start Guide</h2>
+	<ol>
+		<li>Open NVDA's <strong>Select Synthesizer</strong> dialog by pressing <kbd>NVDA+Ctrl+S</kbd> and choose <strong>Google TTS For NVDA</strong>.</li>
+		<li>If no voice packages are installed, NVDA will display a message indicating that no Google TTS For NVDA voices are installed. Press <strong>OK</strong> to open Google TTS Voice Manager and download a voice package. Press <strong>Cancel</strong> to keep using your current synthesizer for now.</li>
+		<li>In Google TTS Voice Manager, select the voice packages you want to use from the list and press <strong>Download checked voice packages</strong>.</li>
+		<li>Once downloaded, open <strong>Voice settings</strong> (<kbd>NVDA+Ctrl+V</kbd>) to select your preferred voice.</li>
+	</ol>
+
+	<h2>Managing Voices</h2>
+	<p>You can open Google TTS Voice Manager at any time to add or remove voice packages:</p>
+	<ul>
+		<li>Press the shortcut <kbd>NVDA+Ctrl+Shift+G</kbd>, or</li>
+		<li>Go to <strong>NVDA Menu &rarr; Tools &rarr; Google TTS Voice Manager...</strong></li>
+	</ul>
+	<p>In Google TTS Voice Manager, you can use the <strong>Filter by language</strong> dropdown box to display only the voice packages for your desired language (e.g., English or Vietnamese) to find voices more quickly. Additionally, you can click <strong>Open voice packages folder</strong> if you wish to check where voice packages are stored on your computer.</p>
+	<p>Voice downloads and removals are handled in the background so you can continue using NVDA without interruption.</p>
+
+	<h2>Configuration</h2>
+	<h3>Speech Settings</h3>
+	<p>In NVDA's Voice settings dialog (<kbd>NVDA+Ctrl+V</kbd>), you can adjust:</p>
+	<ul>
+		<li><strong>Voice:</strong> Choose a voice from your installed voice packages.</li>
+		<li><strong>Rate:</strong> Adjust the reading speed.</li>
+		<li><strong>Rate Boost:</strong> Enable to double the speech rate for high-speed reading.</li>
+		<li><strong>Pitch:</strong> Adjust the pitch of the voice.</li>
+		<li><strong>Volume:</strong> Adjust the speech volume.</li>
+	</ul>
+
+	<h3>Add-on Settings</h3>
+	<p>Under <strong>NVDA Menu &rarr; Preferences &rarr; Settings &rarr; Google TTS For NVDA</strong>, you can configure:</p>
+	<ul>
+		<li><strong>Browser runtime:</strong> Choose Microsoft Edge or Google Chrome as the background browser runtime for the add-on. The settings panel displays the availability status of browsers on your system.</li>
+	</ul>
+
+	<h2>Notes</h2>
+	<ul>
+		<li>You do not need to keep a Microsoft Edge or Google Chrome browser window open while using NVDA. The add-on automatically connects and processes speech in the background.</li>
+		<li>When NVDA first speaks after startup, voices may take a brief moment to initialize.</li>
+		<li>Voice packages are stored locally on your computer and managed securely through Google TTS Voice Manager.</li>
+	</ul>
+
+	<h2>Support &amp; Contact</h2>
+	<p>If you have questions, feedback, or need assistance, feel free to contact the development team:</p>
+	<ul>
+		<li><strong>Nguyen Anh Duc:</strong> <a href="mailto:ducna1803@gmail.com">ducna1803@gmail.com</a> | <a href="https://t.me/anhduc1803">t.me/anhduc1803</a></li>
+		<li><strong>Dao Duc Trung:</strong> <a href="mailto:trung@ddt.one">trung@ddt.one</a> | <a href="https://t.me/Daoductrung">t.me/Daoductrung</a></li>
+		<li><strong>Pham Hung Vuong:</strong> <a href="mailto:hungvuong106206@gmail.com">hungvuong106206@gmail.com</a> | <a href="https://t.me/phamhungvuong302">t.me/phamhungvuong302</a></li>
+	</ul>
+
+	<h2>Change Log</h2>
+	<h3>Version 0.3 (2026-07-12)</h3>
+	<ul>
+		<li><strong>Browser Runtime Selection:</strong> Added an option to choose between Microsoft Edge and Google Chrome as the background browser runtime directly in NVDA settings (<kbd>NVDA Menu &rarr; Preferences &rarr; Settings &rarr; Google TTS For NVDA</kbd>).</li>
+		<li><strong>Connection &amp; Cache Stability:</strong> Moved browser profile storage to <code>AppData\Local</code> to preserve compiled WASM cache across NVDA restarts and automatically hide background browser helper windows.</li>
+		<li><strong>Google TTS Voice Manager Enhancements:</strong> Added a <strong>Filter by language</strong> dropdown, improved keyboard navigation and focus management for screen readers, and added automatic detection and cleanup of orphaned voice packages.</li>
+		<li><strong>Speech Responsiveness &amp; Reliability:</strong> Fixed cut-off speech on the first utterance after NVDA startup or synthesizer switching, reduced speech synthesis latency, and improved speech interruption handling.</li>
+		<li><strong>Expanded Voice Catalog:</strong> Integrated 180 Google TTS voice packages and normalized language codes (160 packages are fully downloadable and usable immediately, while 20 packages are currently not yet compatible with the WASM engine).</li>
+		<li><strong>Localization &amp; Vietnamese Translation:</strong> Implemented a full localization system and added complete Vietnamese translations for the user interface and documentation.</li>
+	</ul>
+
+	<h3>Version 0.2 (2026-07-03)</h3>
+	<ul>
+		<li>Expanded the voice catalog to over 100 voice options, adding 40+ new language/dialect packages and Google Natural voice variants.</li>
+		<li>Upgraded the WASM TTS engine to version 20260625.1.</li>
+		<li>Reordered voice packages alphabetically by locale code for easier navigation.</li>
+	</ul>
+
+	<h3>Version 0.1.5 (2026-07-02)</h3>
+	<ul>
+		<li>Initial release.</li>
+	</ul>
 </body>
 </html>
