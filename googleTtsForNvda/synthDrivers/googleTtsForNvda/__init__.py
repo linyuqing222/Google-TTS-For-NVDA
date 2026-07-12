@@ -57,6 +57,11 @@ _URL_TOKEN_SEGMENT_MAX_CHARS = 220
 _FORCED_SEGMENT_MIN_CHARS = 32
 _FORCED_SEGMENT_FORWARD_LOOKAHEAD = 24
 _FORCED_SEGMENT_HARD_MAX_CHARS = 256
+# Phrase-level break characters. These must include non-ASCII punctuation:
+# scripts such as Arabic, Urdu and Farsi use their own comma/semicolon
+# (U+060C "،", U+061B "؛") and never the ASCII ones, so an ASCII-only set finds
+# no phrase break at all in Arabic prose. Also covers CJK and Armenian/Ethiopic.
+_SOFT_BREAK_CHARS = ",，、;；\u060C\u061B\u3001\uFF0C\uFF1B\u055D\u1363"
 _VOICE_WARMUP_TEXT = "a"
 
 _COMMON_ABBREVIATIONS = {
@@ -605,11 +610,37 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		while len(remaining) > _SOFT_PHRASE_SEGMENT_MAX_CHARS:
 			cut = self._find_soft_phrase_cut(remaining, first_segment)
 			if cut is None:
-				break
+				# No phrase punctuation anywhere in range. Previously we broke out
+				# here and yielded the whole remainder, which can hand the engine a
+				# very long utterance (anything up to _SEAMLESS_UTTERANCE_MAX_CHARS)
+				# in a single request. The engine fails silently on over-long input -
+				# it returns no audio at all and the utterance is simply never
+				# spoken. This is easy to hit in scripts that do not use ASCII
+				# punctuation: an ~886 character unpointed Arabic sentence with no
+				# full stop reproduces it reliably.
+				#
+				# Fall back to a whitespace (word boundary) cut so a segment is
+				# always produced and never exceeds the hard maximum.
+				cut = self._find_whitespace_cut(
+					remaining,
+					_SOFT_PHRASE_SEGMENT_MIN_CHARS,
+					_SOFT_PHRASE_SEGMENT_MAX_CHARS,
+					_SOFT_PHRASE_SEGMENT_LOOKAHEAD,
+				)
+			if cut is None:
+				# Not even a space (e.g. one enormous unbroken token). Cut on the
+				# hard maximum rather than emitting an oversized segment.
+				cut = min(len(remaining), _FORCED_SEGMENT_HARD_MAX_CHARS)
 			segment = remaining[:cut].strip()
 			if segment:
 				yield segment
-			remaining = remaining[cut:].strip()
+			nextRemaining = remaining[cut:].strip()
+			if nextRemaining == remaining:
+				# Guarantee forward progress; never loop forever on a pathological
+				# input.
+				yield nextRemaining
+				return
+			remaining = nextRemaining
 			first_segment = False
 		if remaining:
 			yield remaining
@@ -672,7 +703,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		return best
 
 	def _find_soft_phrase_cut(self, text: str, fastFirstSegment: bool = False) -> int | None:
-		soft_break_chars = ",，、;；"
+		soft_break_chars = _SOFT_BREAK_CHARS
 		if fastFirstSegment:
 			min_len = min(len(text), _FAST_SOFT_PHRASE_SEGMENT_MIN_CHARS)
 			max_len = min(len(text), _FAST_SOFT_PHRASE_SEGMENT_MAX_CHARS)
