@@ -7,6 +7,7 @@ from contextlib import suppress
 import re
 import threading
 import time
+import unicodedata
 from typing import Any
 
 import addonHandler
@@ -30,10 +31,33 @@ _SHORT_CACHE_MAX_CHARS = 5000
 _SHORT_CACHE_MAX_ITEMS = 4096
 _SHORT_CACHE_MAX_BYTES = 200 * 1024 * 1024
 _OUTPUT_GAIN_MAKEUP = 2.0
+_PROTECTED_ENGINE_RATE = 1.0
+_MIN_ARTIFICIAL_RATE = 0.5
+_MAX_ARTIFICIAL_RATE = 2.2
 _SpeechRequest = tuple[list[Any], str, int, int, int, threading.Event]
 _IndexMarker = tuple[Any, int]
 _FAST_FIRST_SEGMENT_MIN_CHARS = 30
 _REGULAR_SEGMENT_MIN_CHARS = 110
+_FAST_FIRST_SEGMENT_MAX_CHARS = 64
+_REGULAR_SEGMENT_MAX_CHARS = 180
+_SEAMLESS_UTTERANCE_MAX_CHARS = 900
+_FAST_SOFT_PHRASE_SEGMENT_MIN_CHARS = 30
+_FAST_SOFT_PHRASE_SEGMENT_MAX_CHARS = 90
+_FAST_SOFT_PHRASE_SEGMENT_LOOKAHEAD = 40
+_SOFT_PHRASE_SEGMENT_MIN_CHARS = 80
+_SOFT_PHRASE_SEGMENT_MAX_CHARS = 170
+_SOFT_PHRASE_SEGMENT_LOOKAHEAD = 40
+_UI_SUMMARY_SEGMENT_MIN_CHARS = 90
+_UI_SUMMARY_SEGMENT_MAX_CHARS = 135
+_UI_SUMMARY_SEGMENT_LOOKAHEAD = 30
+_UI_BOUNDARY_SEGMENT_MIN_CHARS = 45
+_UI_BOUNDARY_SEGMENT_MAX_CHARS = 140
+_UI_BOUNDARY_LOOKAHEAD = 45
+_URL_TOKEN_SEGMENT_MAX_CHARS = 220
+_FORCED_SEGMENT_MIN_CHARS = 32
+_FORCED_SEGMENT_FORWARD_LOOKAHEAD = 24
+_FORCED_SEGMENT_HARD_MAX_CHARS = 256
+_VOICE_WARMUP_TEXT = "a"
 
 _COMMON_ABBREVIATIONS = {
 	# English
@@ -361,8 +385,9 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			rawText = "".join(textParts)
 			textParts.clear()
 			textCharCount = 0
-			leftTrimmed = len(rawText) - len(rawText.lstrip())
-			text = rawText.strip()
+			sanitizedText = self._sanitize_speech_text(rawText)
+			leftTrimmed = len(sanitizedText) - len(sanitizedText.lstrip())
+			text = sanitizedText.strip()
 			indexes = [
 				(index, max(0, min(len(text), charOffset - leftTrimmed)))
 				for index, charOffset in pendingIndexes
@@ -376,13 +401,34 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 				return
 			options = self._speech_options(rate, pitch, volume, activeVoice)
 			segments = list(self._iter_indexed_text_segments(text, indexes, firstTextSegment))
+			groupedSegments: list[tuple[str, list[_IndexMarker]]] = []
+
+			def flush_grouped_segments() -> Iterator[tuple[str, Any]]:
+				nonlocal firstTextSegment
+				if not groupedSegments:
+					return
+				rawSegments = [segment for segment, _segmentIndexes in groupedSegments]
+				spokenSegments = self._spoken_bridge_segments(rawSegments)
+				textGroup = "".join(spokenSegments)
+				hiddenSegments = spokenSegments if len(spokenSegments) > 1 else None
+				groupIndexes: list[_IndexMarker] = []
+				charOffset = 0
+				for spokenSegment, (_rawSegment, segmentIndexes) in zip(spokenSegments, groupedSegments):
+					for index, indexOffset in segmentIndexes:
+						groupIndexes.append((index, charOffset + indexOffset))
+					charOffset += len(spokenSegment)
+				groupedSegments.clear()
+				firstTextSegment = False
+				yield ("text", (textGroup, options, groupIndexes, hiddenSegments))
+
 			for i, (segment, segmentIndexes) in enumerate(segments):
 				if cancelEvent.is_set():
 					return
-				firstTextSegment = False
-				yield ("text", (segment, options, segmentIndexes))
-				if i < len(segments) - 1:
+				groupedSegments.append((segment, segmentIndexes))
+				if i < len(segments) - 1 and self._should_pause_after_segment(segment):
+					yield from flush_grouped_segments()
 					yield ("break", 95)
+			yield from flush_grouped_segments()
 
 		for item in speechSequence:
 			if cancelEvent.is_set():
@@ -458,6 +504,27 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 	def _split_text_for_latency(self, text: str) -> list[str]:
 		return list(self._iter_text_segments_for_latency(text, False))
 
+	def _sanitize_speech_text(self, text: str) -> str:
+		if not text:
+			return text
+		sanitized = "".join(" " if unicodedata.category(character) == "Co" else character for character in text)
+		return self._normalize_ui_speech_boundaries(sanitized)
+
+	def _normalize_ui_speech_boundaries(self, text: str) -> str:
+		if not self._looks_like_ui_summary(text):
+			return text
+		text = re.sub(r"(?i)(\bCtrl\+\s+[A-Z])\s+(?=(?:not\s+selected|selected)\b)", r"\1, ", text)
+		text = re.sub(r"(?i)(?<!,)\s+\b(not\s+selected|selected)\b", r", \1", text, count=1)
+		return text
+
+	def _spoken_bridge_segments(self, segments: list[str]) -> list[str]:
+		spokenSegments: list[str] = []
+		for segment in segments:
+			if spokenSegments and spokenSegments[-1] and segment and spokenSegments[-1][-1].isalnum() and segment[0].isalnum():
+				spokenSegments[-1] += " "
+			spokenSegments.append(segment)
+		return spokenSegments
+
 	def _find_sentence_splits(self, text: str) -> list[int]:
 		splits: list[int] = []
 		for m in _SENTENCE_TERMINATOR_RE.finditer(text):
@@ -493,9 +560,6 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		if not remaining:
 			return
 		splits = self._find_sentence_splits(text)
-		if not splits:
-			yield remaining
-			return
 
 		chunk_start = 0
 		all_boundaries = splits + [len(text)]
@@ -506,9 +570,186 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 				continue
 			target_len = _FAST_FIRST_SEGMENT_MIN_CHARS if (first_yield and fastFirstSegment) else _REGULAR_SEGMENT_MIN_CHARS
 			if len(candidate) >= target_len or end_idx == len(text):
-				yield candidate
+				for segment in self._iter_forced_latency_segments(candidate, first_yield):
+					yield segment
+					first_yield = False
 				chunk_start = end_idx
-				first_yield = False
+
+	def _iter_forced_latency_segments(self, text: str, fastFirstSegment: bool) -> Iterator[str]:
+		remaining = text.strip()
+		if len(remaining) <= _SEAMLESS_UTTERANCE_MAX_CHARS:
+			yield from self._iter_soft_phrase_segments(remaining, fastFirstSegment)
+			return
+		first_yield = fastFirstSegment
+		while remaining:
+			if self._looks_like_url_token(remaining):
+				max_len = min(_URL_TOKEN_SEGMENT_MAX_CHARS, _FORCED_SEGMENT_HARD_MAX_CHARS)
+			else:
+				max_len = _FAST_FIRST_SEGMENT_MAX_CHARS if first_yield else _REGULAR_SEGMENT_MAX_CHARS
+			if len(remaining) <= max_len:
+				yield remaining
+				return
+			cut = self._find_forced_latency_cut(remaining, max_len)
+			segment = remaining[:cut].strip()
+			if segment:
+				yield segment
+			remaining = remaining[cut:].strip()
+			first_yield = False
+
+	def _iter_soft_phrase_segments(self, text: str, fastFirstSegment: bool) -> Iterator[str]:
+		remaining = text.strip()
+		if self._looks_like_ui_summary(remaining):
+			yield from self._iter_ui_summary_segments(remaining)
+			return
+		first_segment = fastFirstSegment
+		while len(remaining) > _SOFT_PHRASE_SEGMENT_MAX_CHARS:
+			cut = self._find_soft_phrase_cut(remaining, first_segment)
+			if cut is None:
+				break
+			segment = remaining[:cut].strip()
+			if segment:
+				yield segment
+			remaining = remaining[cut:].strip()
+			first_segment = False
+		if remaining:
+			yield remaining
+
+	def _iter_ui_summary_segments(self, text: str) -> Iterator[str]:
+		remaining = text.strip()
+		first_segment = True
+		while len(remaining) > _UI_SUMMARY_SEGMENT_MAX_CHARS:
+			cut = self._find_ui_boundary_cut(remaining, first_segment)
+			if cut is None:
+				cut = self._find_whitespace_cut(
+					remaining,
+					_UI_SUMMARY_SEGMENT_MIN_CHARS,
+					_UI_SUMMARY_SEGMENT_MAX_CHARS,
+					_UI_SUMMARY_SEGMENT_LOOKAHEAD,
+				)
+			if cut is None:
+				break
+			segment = remaining[:cut].strip()
+			if segment:
+				yield segment
+			remaining = remaining[cut:].strip()
+			first_segment = False
+		if remaining:
+			yield remaining
+
+	def _looks_like_ui_summary(self, text: str) -> bool:
+		normalized = f" {text.lower()} "
+		return (
+			normalized.endswith(" row ")
+			or " chọn hàng " in normalized
+			or " selected " in normalized
+			or " not selected " in normalized
+			or " edit " in normalized
+			or " button " in normalized
+			or " link " in normalized
+			or " liên kết " in normalized
+			or " nút " in normalized
+		)
+
+	def _find_ui_boundary_cut(self, text: str, fastFirstSegment: bool = False) -> int | None:
+		min_len = _FAST_SOFT_PHRASE_SEGMENT_MIN_CHARS if fastFirstSegment else _UI_BOUNDARY_SEGMENT_MIN_CHARS
+		max_len = _FAST_SOFT_PHRASE_SEGMENT_MAX_CHARS if fastFirstSegment else _UI_BOUNDARY_SEGMENT_MAX_CHARS
+		lookahead = _FAST_SOFT_PHRASE_SEGMENT_LOOKAHEAD if fastFirstSegment else _UI_BOUNDARY_LOOKAHEAD
+		min_len = min(len(text), min_len)
+		max_len = min(len(text), max_len)
+		lookahead_end = min(len(text), max_len + lookahead)
+		boundary_re = re.compile(
+			r"(?i)(?:^|\s)(?:not\s+selected|selected|button|link|edit|row|nút|liên\s+kết)(?=\s|$)"
+		)
+		best: int | None = None
+		for match in boundary_re.finditer(text):
+			cut = match.end()
+			if cut < min_len or cut > lookahead_end:
+				continue
+			if cut <= max_len:
+				best = cut
+			elif best is None:
+				return cut
+		return best
+
+	def _find_soft_phrase_cut(self, text: str, fastFirstSegment: bool = False) -> int | None:
+		soft_break_chars = ",，、;；"
+		if fastFirstSegment:
+			min_len = min(len(text), _FAST_SOFT_PHRASE_SEGMENT_MIN_CHARS)
+			max_len = min(len(text), _FAST_SOFT_PHRASE_SEGMENT_MAX_CHARS)
+			lookahead = _FAST_SOFT_PHRASE_SEGMENT_LOOKAHEAD
+		else:
+			min_len = min(len(text), _SOFT_PHRASE_SEGMENT_MIN_CHARS)
+			max_len = min(len(text), _SOFT_PHRASE_SEGMENT_MAX_CHARS)
+			lookahead = _SOFT_PHRASE_SEGMENT_LOOKAHEAD
+		for index in range(max_len, min_len - 1, -1):
+			if text[index - 1] in soft_break_chars:
+				return index
+		lookahead_end = min(len(text), max_len + lookahead)
+		for index in range(max_len, lookahead_end):
+			if text[index] in soft_break_chars:
+				return index + 1
+		return None
+
+	def _find_whitespace_cut(self, text: str, min_len: int, max_len: int, lookahead: int) -> int | None:
+		min_len = min(len(text), min_len)
+		max_len = min(len(text), max_len)
+		for index in range(max_len, min_len - 1, -1):
+			if text[index - 1].isspace():
+				return index
+		lookahead_end = min(len(text), max_len + lookahead)
+		for index in range(max_len, lookahead_end):
+			if text[index].isspace():
+				return index
+		return None
+
+	def _find_forced_latency_cut(self, text: str, max_len: int) -> int:
+		if len(text) <= max_len:
+			return len(text)
+		min_len = min(max_len, max(_FORCED_SEGMENT_MIN_CHARS, int(max_len * 0.55)))
+		soft_break_chars = ",，、:：;；"
+		for index in range(max_len, min_len - 1, -1):
+			if text[index - 1] in soft_break_chars and self._is_forced_soft_break(text, index):
+				return index
+		for index in range(max_len, min_len - 1, -1):
+			if text[index - 1].isspace():
+				return index
+		lookahead_end = min(len(text), max_len + _FORCED_SEGMENT_FORWARD_LOOKAHEAD)
+		for index in range(max_len, lookahead_end):
+			if text[index].isspace():
+				return index
+		url_break_chars = "/\\?&=#%._-~:"
+		for index in range(max_len, min_len - 1, -1):
+			if text[index - 1] in url_break_chars:
+				return index
+		for index in range(max_len, lookahead_end):
+			if text[index] in url_break_chars:
+				return index + 1
+		if text[max_len - 1].isalnum() and text[max_len].isalnum():
+			word_end = min(len(text), _FORCED_SEGMENT_HARD_MAX_CHARS)
+			for index in range(max_len, word_end):
+				if not text[index].isalnum():
+					return index
+		return max_len
+
+	def _looks_like_url_token(self, text: str) -> bool:
+		if any(character.isspace() for character in text):
+			return False
+		return "://" in text or "/" in text or "\\" in text
+
+	def _is_forced_soft_break(self, text: str, index: int) -> bool:
+		character = text[index - 1]
+		if character in ":：":
+			before = text[index - 2] if index >= 2 else ""
+			after = text[index] if index < len(text) else ""
+			if before.isdigit() and after.isdigit():
+				return False
+		return True
+
+	def _should_pause_after_segment(self, segment: str) -> bool:
+		stripped = segment.rstrip()
+		while stripped and stripped[-1] in "'\")]}”’」』）》〉»":
+			stripped = stripped[:-1].rstrip()
+		return bool(stripped) and stripped[-1] in ".!?。！？｡।॥؟։።፧፨"
 
 	def _speech_loop(self) -> None:
 		while not self._shutdownEvent.is_set():
@@ -549,8 +790,8 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 				if cancelEvent.is_set():
 					return
 				if kind == "text":
-					text, options, indexes = payload
-					self._speak_text(text, options, cancelEvent, indexes)
+					text, options, indexes, hiddenSegments = payload
+					self._speak_text(text, options, cancelEvent, indexes, hiddenSegments)
 				elif kind == "break":
 					self._feed_silence(payload)
 				elif kind == "index":
@@ -574,6 +815,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		options: dict[str, Any],
 		cancelEvent: threading.Event,
 		indexes: list[_IndexMarker] | None = None,
+		hiddenSegments: list[str] | None = None,
 	) -> None:
 		indexes = indexes or []
 		leadingIndexes = [index for index, charOffset in indexes if charOffset <= 0]
@@ -586,7 +828,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 
 		hasInternalIndexes = any(0 < charOffset < len(text) for _index, charOffset in remainingIndexes)
 
-		cacheKey = self._short_cache_key(text, options)
+		cacheKey = self._short_cache_key(text, options, hiddenSegments)
 		if cacheKey is not None:
 			cached = self._get_cached_audio(cacheKey)
 			if cached is not None:
@@ -631,6 +873,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			on_audio,
 			cancelEvent,
 			onMark=on_mark if hasInternalIndexes else None,
+			segments=hiddenSegments,
 		)
 
 		audio = b"".join(audioParts) if audioParts else b""
@@ -706,16 +949,23 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			return
 		self._player.idle()
 
-	def _short_cache_key(self, text: str, options: dict[str, Any]) -> tuple[Any, ...] | None:
+	def _short_cache_key(
+		self,
+		text: str,
+		options: dict[str, Any],
+		hiddenSegments: list[str] | None = None,
+	) -> tuple[Any, ...] | None:
 		if len(text) > _SHORT_CACHE_MAX_CHARS:
 			return None
 		return (
 			text,
+			tuple(hiddenSegments or ()),
 			options.get("voiceId"),
 			options.get("rate"),
 			options.get("pitch"),
 			options.get("volume"),
 			options.get("outputGain"),
+			options.get("artificialRate"),
 		)
 
 	def _get_cached_audio(self, key: tuple[Any, ...]) -> bytes | None:
@@ -757,17 +1007,28 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 
 	def _speech_options(self, rate: int, pitch: int, volume: int, voice: str | None = None) -> dict[str, Any]:
 		speaker = self.catalog.speaker_for_voice(voice or self.__voice)
+		package = self.catalog.package_for_voice(speaker.id)
 		volumeLevel = max(0.0, min(1.0, volume / 100.0))
 		outputGain = max(0.0, min(_OUTPUT_GAIN_MAKEUP, volumeLevel * _OUTPUT_GAIN_MAKEUP))
+		desiredRate = self._rate_to_chrome(rate)
+		engineRate = desiredRate
+		artificialRate = 1.0
+		if self._uses_protected_engine_rate(package.id) and desiredRate > _PROTECTED_ENGINE_RATE:
+			engineRate = _PROTECTED_ENGINE_RATE
+			artificialRate = max(_MIN_ARTIFICIAL_RATE, min(_MAX_ARTIFICIAL_RATE, desiredRate / engineRate))
 		return {
 			"voiceId": speaker.id,
 			"voiceName": speaker.name,
 			"lang": speaker.language,
-			"rate": self._rate_to_chrome(rate),
+			"rate": round(engineRate, 3),
+			"artificialRate": round(artificialRate, 3),
 			"pitch": self._pitch_to_chrome(pitch),
 			"volume": round(volumeLevel, 4),
 			"outputGain": round(outputGain, 4),
 		}
+
+	def _uses_protected_engine_rate(self, packageId: str) -> bool:
+		return packageId.lower().endswith("-seanet")
 
 	def _voice_for_language(self, lang: str | None, fallbackVoice: str) -> str:
 		if not lang:
@@ -830,15 +1091,9 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			if cancelEvent.is_set() or self._shutdownEvent.is_set():
 				return
 			try:
-				self._bridge.preload_voice(options, cancelEvent)
-				for voiceId in list(self.availableVoices.keys()):
-					if cancelEvent.is_set() or self._shutdownEvent.is_set():
-						break
-					if voiceId == self.__voice:
-						continue
-					vOpts = self._speech_options(self._rate, self._pitch, 0, voiceId)
-					with suppress(Exception):
-						self._bridge.preload_voice(vOpts, cancelEvent)
+				warmupOptions = dict(options)
+				warmupOptions["warmupText"] = _VOICE_WARMUP_TEXT
+				self._bridge.preload_voice(warmupOptions, cancelEvent)
 			except CdpCancelled:
 				log.debug("Google TTS voice preload cancelled.")
 			except Exception:

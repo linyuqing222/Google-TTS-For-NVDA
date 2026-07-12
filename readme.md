@@ -10,9 +10,11 @@ This project was created to make Google's high-quality local WebAssembly Text-to
 
 ## Current Status
 
-The add-on is actively maintained and fully functional. However, there are a few known limitations currently being addressed:
-* Voices may load slowly upon first initialization.
-* Pauses and speech segmentation might occasionally be slightly incorrect.
+This add-on is currently being actively maintained and developed by Nguyen Anh Duc, Dao Duc Trung and Pham Hung Vuong. Version 0.3 significantly improves several everyday speech paths, though browser runtime, WASM, cache, and engine behavior can still affect the final result:
+* Voice package startup is improved because the add-on prepares the currently selected package instead of broadly warming multiple packages.
+* Long text and UI speech handling is improved with more careful background segmentation, so speech can often begin sooner while keeping spoken output more natural.
+* Audio balance and harshness are improved across voice packages with dynamic gain control and limiting, reducing the chance of clipping or distorted sound.
+* SeaNet voice packages use post-synthesis artificial rate processing at higher speeds to preserve quality better; this can increase CPU usage when reading quickly.
 
 We highly welcome and appreciate any feedback from the community to help us improve!
 
@@ -22,7 +24,7 @@ We highly welcome and appreciate any feedback from the community to help us impr
 
 * **Comprehensive Voice Support**: Supports all languages and voices available in WasmTtsEngine. This includes Chrome OS packages (optimized for frequent use and high-speed screen reading) and Google Natural packages (designed for higher quality, standard text reading).
 * **100% Offline Speech**: Speech is rendered locally via a supported headless browser runtime (Microsoft Edge or Google Chrome).
-* **Low Latency**: Uses advanced text segmentation (smaller first clause) to ensure instant speech responses.
+* **Low Latency**: Uses current-package warm-up and advanced background text segmentation to improve speech responsiveness.
 * **Volatile Audio Cache**: In-memory cache for short phrases (under 5000 characters) to optimize repeated announcements safely.
 * **Voice Manager**: Check, download, or remove voice packages in batches using a multi-select checkbox interface.
 * **Background Operations**: Non-blocking downloads and removals on background threads.
@@ -54,8 +56,8 @@ We highly welcome and appreciate any feedback from the community to help us impr
 
 The synthesizer supports the standard NVDA Speech settings ring:
 * **Voice**: Choose from your installed speaker/language voice packages.
-* **Rate**: Speech rate (maps to the browser runtime's 0.35x - 2.0x speed).
-* **Rate Boost**: Enable to double the computed speech rate for fast reading.
+* **Rate**: Speech rate. Non-SeaNet packages use the browser runtime rate path; SeaNet packages may use post-synthesis artificial rate processing at higher speeds.
+* **Rate Boost**: Enable to double the computed speech rate for fast reading. High-speed SeaNet speech may use more CPU because the add-on processes generated audio after synthesis.
 * **Pitch**: Speech pitch adjustment.
 * **Volume**: Speech volume (maps to the browser runtime's 0.0 - 1.0 volume range).
 
@@ -79,33 +81,33 @@ build.bat
 ```
 
 The build script reads the version from `googleTtsForNvda/manifest.ini`, builds all add-on locales non-interactively, checks Python and JavaScript syntax, verifies that no `.zvoice` voice packages are inside the source tree, removes generated `__pycache__` folders, and packages the add-on.
- 
- The verified `.nvda-addon` package will be created in the `dist/` directory, with a name like:
- 
- ```text
- dist/googleTtsForNvda-0.3.nvda-addon
- ```
- 
- ---
- 
- ## Translation
- 
- We warmly welcome translations for new languages or updates to existing ones!
- 
- If you would like to translate this add-on into your local language:
- * Read the detailed translation guide in [TRANSLATING.md](TRANSLATING.md) to understand the layout, workflow, and how to use translation tools (such as Poedit).
- * Use the helper script `build_i18n.py` to validate or build your translation files:
-   * Running `python build_i18n.py` opens an interactive menu to guide you.
-   * Running `python build_i18n.py --check --all-languages` validates all existing translations.
-   * Running `python build_i18n.py --all-languages` compiles and updates translation files for all locales.
- 
- ---
- 
- ## Contributing
- 
- We strongly welcome contributions from other developers! If you have ideas, bug fixes, or improvements, please feel free to open an issue or submit a pull request.
- 
- ---
+
+The verified `.nvda-addon` package will be created in the `dist/` directory, with a name like:
+
+```text
+dist/googleTtsForNvda-0.3.nvda-addon
+```
+
+---
+
+## Translation
+
+We warmly welcome translations for new languages or updates to existing ones!
+
+If you would like to translate this add-on into your local language:
+* Read the detailed translation guide in [TRANSLATING.md](TRANSLATING.md) to understand the layout, workflow, and how to use translation tools such as Poedit.
+* Use the helper script `build_i18n.py` to validate or build your translation files:
+  * Running `python build_i18n.py` opens an interactive menu to guide you.
+  * Running `python build_i18n.py --check --all-languages` validates all existing translations.
+  * Running `python build_i18n.py --all-languages` compiles and updates translation files for all locales.
+
+---
+
+## Contributing
+
+We strongly welcome contributions from other developers! If you have ideas, bug fixes, or improvements, please feel free to open an issue or submit a pull request.
+
+---
 
 ## Contact
 

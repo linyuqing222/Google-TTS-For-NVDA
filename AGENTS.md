@@ -8,6 +8,18 @@ This file is the operating manual for coding agents. Follow it before making or 
 
 ---
 
+## Version 0.3 Product Wording
+
+When writing documentation, release notes, commit messages, or user-facing summaries for version 0.3:
+
+- Describe voice package startup work as an improvement, not as a complete fix. The add-on prepares the currently selected voice package sooner, but browser runtime and WASM startup still affect timing.
+- Describe audio balance, clipping, harshness, or distortion work as an improvement, not as a complete fix. The processing is generic across voice packages and languages; Vietnamese may be mentioned only as a testing example, not as the only affected language.
+- Describe long-text and UI-text latency/segmentation work as an improvement, not as a complete fix. Background segmentation can make speech begin sooner and sound more natural, but cache misses and engine behavior can still affect long utterances.
+- SeaNet high-rate handling can be described as successful for quality preservation, with the explicit trade-off that high-speed SeaNet speech uses more CPU because generated audio is processed after synthesis.
+- Use "voice package" when referring to startup/warm-up behavior. Do not imply that version 0.3 warms or fixes every individual speaker voice independently.
+
+---
+
 ## 1. Agent Operating Mode
 
 ### Default behavior
@@ -138,8 +150,8 @@ If no voice packages are installed when the synth starts:
 Current supported settings:
 
 - `VoiceSetting()` — voice selection
-- `RateSetting()` — speech rate, 0-100, maps to browser-runtime rate 0.35-2.0
-- `RateBoostSetting()` — boolean, doubles computed browser-runtime rate when enabled
+- `RateSetting()` — speech rate, 0-100. Non-SeaNet packages map to browser-runtime rate 0.35-2.0; `*-seanet` packages keep a protected engine rate at higher speeds and use post-synthesis artificial rate processing.
+- `RateBoostSetting()` — boolean, doubles computed desired speech rate when enabled. For `*-seanet` packages at high rates, this can increase CPU usage because audio is processed after synthesis.
 - `PitchSetting()` — pitch, 0-100, maps through the existing semitone curve
 - `VolumeSetting()` — volume, 0-100, maps to browser-runtime volume 0.0-1.0
 
@@ -216,6 +228,13 @@ They are required for `SharedArrayBuffer` support. Do not remove or weaken them.
 - The engine global symbol (`window.Vh`, `window.Uh`, etc.) is an obfuscated name from compiled browser extension code that changes across versions. `bridgeHarness.js` resolves this dynamically using `getTtsEngine()`. Do not assume any fixed global name will remain stable across future engine updates.
 - `bridgeHarness.js` should remain strict-mode and IIFE-wrapped.
 - Avoid changing PCM conversion semantics unless fixing a documented audio bug.
+
+### SeaNet protected rate handling
+
+- Apply protected high-rate behavior only to package IDs ending in `-seanet`, such as `multi-seanet`, `afh-seanet`, and `fis-seanet`.
+- Do not apply the SeaNet artificial-rate path to non-SeaNet packages such as `multi`, `afh`, and `fis`.
+- Keep the engine rate safer for SeaNet quality at high speeds, then apply artificial rate processing to generated PCM in `bridgeHarness.js`.
+- Expect higher CPU usage when users read quickly with SeaNet packages because the add-on performs post-synthesis audio processing.
 
 ### CDP/WebSocket expectations
 

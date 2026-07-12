@@ -403,6 +403,7 @@ class ChromeTtsBridge:
 			"sessionId": f"preload-{time.monotonic_ns()}",
 			"voiceName": options["voiceName"],
 			"lang": options["lang"],
+			"text": str(options.get("warmupText") or "a"),
 		}
 		response = self._cdp_request(
 			"Runtime.evaluate",
@@ -426,6 +427,7 @@ class ChromeTtsBridge:
 		onAudio: AudioCallback,
 		cancelEvent: threading.Event | None = None,
 		onMark: MarkCallback | None = None,
+		segments: list[str] | None = None,
 	) -> dict[str, Any]:
 		if not text.strip():
 			return {"success": True, "empty": True}
@@ -449,10 +451,13 @@ class ChromeTtsBridge:
 			"voiceName": options["voiceName"],
 			"lang": options["lang"],
 			"rate": options["rate"],
+			"artificialRate": options.get("artificialRate", 1),
 			"pitch": options["pitch"],
 			"volume": options["volume"],
 			"outputGain": options.get("outputGain", options["volume"]),
 		}
+		if segments:
+			payload["segments"] = segments
 		state: dict[str, Any] = {"audioChunks": 0, "done": False}
 		startedAt = time.perf_counter()
 		firstAudioAt: float | None = None
