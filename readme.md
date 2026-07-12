@@ -26,7 +26,7 @@ We highly welcome and appreciate any feedback from the community to help us impr
 * **100% Offline Speech**: Speech is rendered locally via a supported headless browser runtime (Microsoft Edge or Google Chrome).
 * **Low Latency**: Uses current-package warm-up and advanced background text segmentation to improve speech responsiveness.
 * **Volatile Audio Cache**: In-memory cache for short phrases (under 5000 characters) to optimize repeated announcements safely.
-* **Voice Manager**: Check, download, or remove voice packages in batches using a multi-select checkbox interface.
+* **Voice Manager**: Easily browse, filter by language, download, or remove voice packages in batches using a multi-select checkbox interface. Also includes an **Open voice packages folder** button to inspect storage locations.
 * **Background Operations**: Non-blocking downloads and removals on background threads.
 * **Accessible Shortcut**: Press **`NVDA+Ctrl+Shift+G`** to open the Voice Manager instantly.
 * **Browser Runtime Selection**: Choose between Microsoft Edge and Google Chrome as the underlying engine directly from the NVDA settings panel.
@@ -44,9 +44,9 @@ We highly welcome and appreciate any feedback from the community to help us impr
 
 1. Download the latest `.nvda-addon` package from the [Releases](https://github.com/nguyenanhduc09/Google-TTS-For-NVDA/releases) page.
 2. Open the package (or use NVDA's Add-on Store -> Install from external source) and follow the prompts to install it.
-3. Upon first selecting **Google TTS For NVDA** as your synthesizer, if no voice packages are installed, NVDA will notify you and automatically open the **Google TTS Voice Manager...** dialog so you can download at least one voice package to use.
+3. Upon first selecting **Google TTS For NVDA** as your synthesizer, if no voice packages are installed, NVDA will prompt you indicating that no Google TTS For NVDA voices are installed. Press **OK** to open Google TTS Voice Manager and download a voice package, or press **Cancel** to keep using your current synthesizer.
 4. Alternatively, you can also press **`NVDA+Ctrl+Shift+G`** or go to **NVDA Menu -> Tools -> Google TTS Voice Manager...** at any time to manage your voice packages.
-5. Check the boxes next to the voice packages you want, and click **Download checked voice packages**.
+5. In Google TTS Voice Manager, you can use the **Filter by language** dropdown to quickly find voices for your language, check the boxes next to the voice packages you want, and click **Download checked voice packages**.
 
 ---
 
