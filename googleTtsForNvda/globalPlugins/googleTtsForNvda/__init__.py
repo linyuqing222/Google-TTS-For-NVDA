@@ -44,23 +44,82 @@ def _call_set_synth_compat(
 		signature = inspect.signature(setSynth)
 	except (TypeError, ValueError):
 		try:
-			return setSynth(name, isFallback=isFallback, _leftToTry=_leftToTry)
+			return setSynth(name, isFallback, _leftToTry)
 		except TypeError as exc:
 			if "_leftToTry" not in str(exc):
 				raise
-			return setSynth(name, isFallback=isFallback)
+		try:
+			return setSynth(name, isFallback)
+		except TypeError as exc:
+			if "isFallback" not in str(exc):
+				raise
+		return setSynth(name)
 
 	parameters = signature.parameters
+	acceptsVarargs = any(
+		parameter.kind == inspect.Parameter.VAR_POSITIONAL
+		for parameter in parameters.values()
+	)
 	acceptsKwargs = any(
 		parameter.kind == inspect.Parameter.VAR_KEYWORD
 		for parameter in parameters.values()
 	)
+	positionalArgs: list[Any] = [name]
 	kwargs: dict[str, Any] = {}
-	if acceptsKwargs or "isFallback" in parameters:
-		kwargs["isFallback"] = isFallback
-	if acceptsKwargs or "_leftToTry" in parameters:
-		kwargs["_leftToTry"] = _leftToTry
-	return setSynth(name, **kwargs)
+	for parameterName, value in (
+		("isFallback", isFallback),
+		("_leftToTry", _leftToTry),
+	):
+		if acceptsVarargs and parameterName not in parameters and not acceptsKwargs:
+			positionalArgs.append(value)
+			continue
+		if acceptsKwargs:
+			kwargs[parameterName] = value
+			continue
+		parameter = parameters.get(parameterName)
+		if parameter is None:
+			continue
+		if parameter.kind == inspect.Parameter.POSITIONAL_ONLY:
+			positionalArgs.append(value)
+		else:
+			kwargs[parameterName] = value
+	return setSynth(*positionalArgs, **kwargs)
+
+
+def _normalize_set_synth_args(
+	args: tuple[Any, ...],
+	kwargs: dict[str, Any],
+) -> tuple[str | None, bool, list[str] | None]:
+	kwargs = dict(kwargs)
+	name = None
+	if args:
+		name = args[0]
+	elif "name" in kwargs:
+		name = kwargs.pop("name")
+	elif "synthName" in kwargs:
+		name = kwargs.pop("synthName")
+	else:
+		raise TypeError("setSynth() missing required argument: 'name'")
+	if len(args) > 3:
+		raise TypeError(f"setSynth() takes at most 3 positional arguments ({len(args)} given)")
+	isFallback = False
+	_leftToTry = None
+	if len(args) >= 2:
+		if "isFallback" in kwargs:
+			raise TypeError("setSynth() got multiple values for argument 'isFallback'")
+		isFallback = args[1]
+	if len(args) >= 3:
+		if "_leftToTry" in kwargs:
+			raise TypeError("setSynth() got multiple values for argument '_leftToTry'")
+		_leftToTry = args[2]
+	for key in kwargs:
+		if key not in {"isFallback", "_leftToTry"}:
+			raise TypeError(f"setSynth() got an unexpected keyword argument '{key}'")
+	if "isFallback" in kwargs:
+		isFallback = kwargs["isFallback"]
+	if "_leftToTry" in kwargs:
+		_leftToTry = kwargs["_leftToTry"]
+	return name, isFallback, _leftToTry
 
 
 def _clear_dialog_reference(dialog: VoiceManagerDialog) -> None:
@@ -172,11 +231,10 @@ def _show_missing_voices_prompt(message: str | None = None) -> None:
 
 
 def _set_synth_with_google_tts_voice_prompt(
-	name: str | None,
-	isFallback: bool = False,
-	*,
-	_leftToTry: list[str] | None = None,
+	*args: Any,
+	**kwargs: Any,
 ) -> bool:
+	name, isFallback, _leftToTry = _normalize_set_synth_args(args, kwargs)
 	# Keep the current synthesizer active so NVDA can speak the prompt instead of
 	# showing its generic "could not load synthesizer" error first.
 	if (
