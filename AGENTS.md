@@ -181,38 +181,38 @@ These were removed and must stay removed unless the user explicitly requests a n
 - Current no-space/low-space script coverage includes CJK/Han and CJK extensions, Bopomofo, Japanese Kana, Thai, Lao, Limbu, Tai Le, New Tai Lue, Buginese, Tai Tham, Khmer, Myanmar, Tibetan, Philippine Brahmic scripts, Balinese, Sundanese, Batak, Javanese, Lepcha, Yi, Rejang, Cham, Tai Viet, and similar scripts where long text commonly cannot rely on spaces as word boundaries.
 - Do not add Latin, Cyrillic, Arabic, Hebrew, Ethiopic, Cherokee, Canadian Aboriginal syllabics, or other normally space-separated scripts to the no-space fallback without a specific bug report or clear evidence. For those scripts, punctuation and whitespace-based segmentation should remain the default.
 
-### Auto-detect language profiles
+### Automatic language profiles
 
-Automatic language detection deliberately has its own profile system and must not write per-language values into NVDA's normal Speech Settings.
+Automatic language profiles deliberately have their own profile system and must not write per-language values into NVDA's normal Speech Settings.
 
 - Config keys live under `CONFIG_SECTION = "googleTtsForNvda"`:
   - `autoLanguageDetection` — master enable switch.
   - `autoLanguagePreferred` — preferred language used when text is ambiguous.
   - `autoLanguageCandidates` — comma-separated compatibility list of selected languages.
   - `autoLanguageProfiles` — JSON object keyed by installed language code. Each profile stores `enabled`, `voice`, `rate`, `rateBoost`, `pitch`, `volume`, `capPitchChange`, `sayCapForCapitals`, `beepForCapitals`, and `useSpellingFunctionality`.
-- When auto-detect is **off**, the synth must use NVDA's normal Speech Settings values for voice, rate, rate boost, pitch, volume, capital-letter handling, and spelling behavior.
-- When auto-detect is **on**, detected sentences must use the selected language profile values. If only one language profile is enabled, use that profile for every sentence; do not fall back to normal Speech Settings values merely because there is only one candidate. Do not persistently copy these profile values into `config.conf["speech"][synthName]`.
+- When automatic language profiles are **off**, the synth must use NVDA's normal Speech Settings values for voice, rate, rate boost, pitch, volume, capital-letter handling, and spelling behavior.
+- When automatic language profiles are **on**, detected sentences must use the selected language profile values. If only one language profile is enabled, use that profile for every sentence; do not fall back to normal Speech Settings values merely because there is only one candidate. Do not persistently copy these profile values into `config.conf["speech"][synthName]`.
 - Keep NVDA-wide Speech Settings in NVDA Speech Settings. This includes automatic language/dialect switching, language change reporting, punctuation and symbol level, trusted voice language, Unicode normalization, Unicode Consortium data (including emoji), normalized-character reporting, extra symbol dictionaries, delayed character descriptions, and cycle speech mode choices.
-- Auto-detect should use the bundled CLD2 detector (`synthDrivers/googleTtsForNvda/language_detector.py` and `synthDrivers/googleTtsForNvda/cld2/`) as the primary detector. `language_detector.py` must select `cld2_x86.dll` for 32-bit NVDA/Python and `cld2_x64.dll` for 64-bit NVDA/Python, with `cld2.dll` only as a compatibility fallback.
-- Do not use unreliable CLD2 results as authoritative for unclear text. If CLD2 is unavailable or uncertain, the synth may use conservative local language signals and then the enabled preferred language; it must not fall back to normal Speech Settings values while auto-detect is on.
-- Explicit `LangChangeCommand` values from NVDA or the focused app remain authoritative and should not be overridden by auto-detect.
-- Auto-detect should insert `LangChangeCommand` before NVDA text processing when possible, so symbol pronunciation and speech dictionary processing remain in NVDA's normal speech pipeline for the selected language context.
-- Auto-detect voice dictionary handling must follow the selected profile voice for each enabled language. Temporarily load the matching NVDA voice dictionary only while NVDA processes that segment, then restore the user's current voice dictionary. Default and temporary dictionaries must keep NVDA's normal behavior.
+- Automatic language profiles should use the bundled CLD2 detector (`synthDrivers/googleTtsForNvda/language_detector.py` and `synthDrivers/googleTtsForNvda/cld2/`) as the primary detector. `language_detector.py` must select `cld2_x86.dll` for 32-bit NVDA/Python and `cld2_x64.dll` for 64-bit NVDA/Python, with `cld2.dll` only as a compatibility fallback.
+- Do not use unreliable CLD2 results as authoritative for unclear text. If CLD2 is unavailable or uncertain, the synth may use conservative local language signals and then the enabled preferred language; it must not fall back to normal Speech Settings values while automatic language profiles are on.
+- Explicit `LangChangeCommand` values from NVDA or the focused app remain authoritative and should not be overridden by automatic language profile selection.
+- Automatic language profiles should insert `LangChangeCommand` before NVDA text processing when possible, so symbol pronunciation and speech dictionary processing remain in NVDA's normal speech pipeline for the selected language context.
+- Automatic language profile voice dictionary handling must follow the selected profile voice for each enabled language. Temporarily load the matching NVDA voice dictionary only while NVDA processes that segment, then restore the user's current voice dictionary. Default and temporary dictionaries must keep NVDA's normal behavior.
 - Keep Google voice catalog language codes separate from NVDA text-processing locales. Catalog/profile/Voice Manager selection should preserve Google language codes such as `vi-VN`, `en-GB`, or `cmn-TW` so the correct Google voice is chosen. Only convert to NVDA locale form when passing language context into NVDA speech processing, `LangChangeCommand`, symbol pronunciation, CLDR/emoji processing, voice dictionaries, or the synth `language` property.
 - NVDA locale conversion must follow the installed NVDA locale folders under `globalVars.appDir\locale`: first try the exact normalized locale such as `vi_VN`, then its root such as `vi`, then fall back to `en` if NVDA has no locale data for that language. Preserve special mappings where Google and NVDA use different identifiers, including `cmn-CN -> zh_CN`, `cmn-TW -> zh_TW`, `yue-HK -> zh_HK`, `ar-XA -> ar`, and `fil-PH -> tl` before applying the installed-locale fallback.
 - Profile voices must be installed and must match the selected profile language. If a saved profile references a missing or mismatched voice, fall back to an installed voice for that language.
-- The Google TTS settings panel must keep the language profile list accessible: use a normal language choice control, a clear checkbox for "Use this language in auto-detect", and ordinary labeled controls for profile values. Do not use a multi-column table for these profile controls.
+- The Google TTS settings panel must keep the language profile list accessible: use a normal language choice control, a clear checkbox for "Use this language profile", and ordinary labeled controls for profile values. Do not use a multi-column table for these profile controls.
 - Status/help lines in Speech Settings and the Google TTS settings category must be reachable by Tab and read by NVDA. Use focusable read-only controls for these status lines instead of plain `wx.StaticText`.
 - The Google TTS settings category status line for automatic language profiles must describe the current state, not only the enabled behavior:
   - no installed language voice packages: prompt the user to install at least one language voice package;
   - automatic language profiles off: explain that Google TTS is using NVDA's normal Speech Settings values;
   - automatic language profiles on with no selected profiles: prompt the user to select at least one language profile;
   - automatic language profiles on with selected profiles: explain that selected installed language profiles are used, and one selected profile applies to every sentence.
-- The preferred auto-detect language choice must only list languages whose profile is enabled.
+- The preferred profile language choice must only list languages whose profile is enabled.
 - Rate, pitch, and volume profile controls should use sliders, matching NVDA's Speech Settings interaction style. Capital pitch should use NVDA's numeric edit/spin control (`nvdaControls.SelectOnFocusSpinCtrl`) to match Speech Settings.
 - Use NVDA's own translated setting names for voice/rate/rate boost/pitch/volume labels where possible instead of inventing add-on-specific translated terms.
 - The main checkbox label should describe the broader behavior as automatic language profiles, not only switching between voices, because one enabled profile is valid and applies to every sentence.
-- When auto-detect is enabled, `SynthDriver.supportedSettings` should hide normal `VoiceSetting`, `RateSetting`, `RateBoostSetting`, `PitchSetting`, and `VolumeSetting`, and instead expose a read-only notice that directs the user to the Google TTS For NVDA settings category. Refresh the settings ring after saving the auto-detect setting.
+- When automatic language profiles are enabled, `SynthDriver.supportedSettings` should hide normal `VoiceSetting`, `RateSetting`, `RateBoostSetting`, `PitchSetting`, and `VolumeSetting`, and instead expose a read-only notice that directs the user to the Google TTS For NVDA settings category. Refresh the settings ring after saving the automatic language profile setting.
 - Vietnamese UI/docs must translate "Google TTS for NVDA" as "Google TTS Cho NVDA" when it is user-facing text.
 
 ### Volatile RAM speech cache

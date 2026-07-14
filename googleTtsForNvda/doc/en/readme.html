@@ -19,7 +19,7 @@
 		<li><strong>Google TTS Voice Manager:</strong> Easily browse, download, or remove voice packages in batches through an accessible dialog.</li>
 		<li><strong>Quick Shortcut:</strong> Press <kbd>NVDA+Ctrl+Shift+G</kbd> anywhere to open Google TTS Voice Manager instantly.</li>
 		<li><strong>Browser Selection:</strong> Choose Microsoft Edge or Google Chrome as the background browser runtime directly in NVDA settings.</li>
-		<li><strong>Automatic language detection with CLD2:</strong> Switch between enabled language profiles sentence by sentence using bundled CLD2 language detection, with a preferred language used when text is unclear.</li>
+		<li><strong>Automatic language profiles:</strong> Use per-language voice profiles. With multiple enabled languages, the add-on can switch profiles sentence by sentence using bundled CLD2 language detection, with a preferred language used when text is unclear.</li>
 	</ul>
 
 	<h2>System Requirements</h2>
@@ -48,7 +48,7 @@
 
 	<h2>Configuration</h2>
 	<h3>Speech Settings</h3>
-	<p>When automatic language detection is off, NVDA's Speech settings dialog (<kbd>NVDA+Ctrl+V</kbd>) provides:</p>
+	<p>When automatic language profiles are off, NVDA's Speech settings dialog (<kbd>NVDA+Ctrl+V</kbd>) provides:</p>
 	<ul>
 		<li><strong>Voice:</strong> Choose a voice from your installed voice packages.</li>
 		<li><strong>Rate:</strong> Adjust the reading speed.</li>
@@ -64,22 +64,22 @@
 		<li><strong>Use automatic language profiles:</strong> Enable automatic profile selection and open the profile controls described below.</li>
 	</ul>
 
-	<h3>Automatic Language Detection Profiles</h3>
+	<h3>Automatic Language Profiles</h3>
 	<p>When <strong>Use automatic language profiles</strong> is enabled, detected sentences use the add-on's per-language profiles instead of the normal NVDA Speech settings. If only one language profile is enabled, that profile is used for every sentence. Your regular Speech Settings values remain available again when automatic language profiles are turned off.</p>
-	<p>Automatic language detection uses bundled CLD2 detector libraries for both 32-bit (x86) and 64-bit (x64) NVDA builds. CLD2 results are accepted only when they are reliable enough for one of the enabled languages. If text is too short or unclear, the add-on uses conservative local language signals where available, then falls back to the preferred enabled language.</p>
+	<p>Automatic language profiles use bundled CLD2 detector libraries for both 32-bit (x86) and 64-bit (x64) NVDA builds. CLD2 results are accepted only when they are reliable enough for one of the enabled languages. If text is too short or unclear, the add-on uses conservative local language signals where available, then falls back to the preferred enabled language.</p>
 	<ol>
 		<li>Open <strong>NVDA Menu &rarr; Preferences &rarr; Settings &rarr; Google TTS For NVDA</strong>.</li>
 		<li>Enable <strong>Use automatic language profiles</strong>.</li>
-		<li>Select an <strong>Auto-detect language profile</strong>.</li>
-		<li>Check <strong>Use this language in auto-detect</strong> for each language you want the add-on to detect. Language profiles are off until you check them.</li>
+		<li>Select an <strong>Automatic language profile</strong>.</li>
+		<li>Check <strong>Use this language profile</strong> for each language you want automatic language profiles to use. Language profiles are off until you check them.</li>
 		<li>For each enabled language, choose its voice and set rate, rate boost, pitch, volume, capital-letter pitch, cap announcement, capital beep, and spelling behavior.</li>
-		<li>Choose the <strong>Preferred auto-detect language</strong>. Only enabled languages appear in this list, and the preferred language is used when a sentence is unclear.</li>
+		<li>Choose the <strong>Preferred profile language</strong>. Only enabled languages appear in this list, and the preferred language is used when a sentence is unclear.</li>
 	</ol>
 	<p>Rate, pitch, and volume use slider controls like NVDA's Speech Settings. Capital-letter pitch uses the same numeric edit/spin control as NVDA's Speech Settings. The labels for voice, rate, rate boost, pitch, volume, and capital/spelling options use NVDA's own translated setting names where possible.</p>
 	<p>Speech settings that are global to NVDA, such as punctuation and symbol level, automatic dialect switching, language change reporting, trusted voice language, Unicode normalization, Unicode Consortium data (including emoji), extra symbol dictionaries, delayed character descriptions, and cycle speech mode choices remain in NVDA's Speech Settings.</p>
-	<p>Automatic language detection marks the language before NVDA processes text, so NVDA's symbol pronunciation and speech dictionary processing stay in the normal speech pipeline for the selected language context.</p>
-	<p>When automatic language detection is off, NVDA voice dictionaries work normally for the currently selected Google TTS voice. When automatic language detection is on, the add-on temporarily uses the voice dictionary for each enabled language profile's selected voice while NVDA processes that segment. NVDA's default and temporary dictionaries still follow NVDA's normal behavior.</p>
-	<p>While automatic language detection is enabled, NVDA's Speech settings dialog will not offer the normal voice, rate, rate boost, pitch, and volume controls for this synthesizer. It will show a focusable notice directing you to the Google TTS For NVDA settings category instead. Google TTS also uses each enabled profile's capital-letter and spelling options while automatic language profiles are on; the normal Speech Settings values remain available again when automatic language profiles are turned off. Status messages in the Google TTS For NVDA settings category are also reachable with Tab so screen readers can announce them.</p>
+	<p>Automatic language profiles mark the language before NVDA processes text, so NVDA's symbol pronunciation and speech dictionary processing stay in the normal speech pipeline for the selected language context.</p>
+	<p>When automatic language profiles are off, NVDA voice dictionaries work normally for the currently selected Google TTS voice. When automatic language profiles are on, the add-on temporarily uses the voice dictionary for each enabled language profile's selected voice while NVDA processes that segment. NVDA's default and temporary dictionaries still follow NVDA's normal behavior.</p>
+	<p>While automatic language profiles are enabled, NVDA's Speech settings dialog will not offer the normal voice, rate, rate boost, pitch, and volume controls for this synthesizer. It will show a focusable notice directing you to the Google TTS For NVDA settings category instead. Google TTS also uses each enabled profile's capital-letter and spelling options while automatic language profiles are on; the normal Speech Settings values remain available again when automatic language profiles are turned off. Status messages in the Google TTS For NVDA settings category are also reachable with Tab so screen readers can announce them.</p>
 
 	<h2>Troubleshooting Edge Runtime Silence</h2>
 	<p>If you choose <strong>Microsoft Edge</strong> as the browser runtime and Google TTS For NVDA stays silent even though Microsoft Edge is installed, install or repair the Microsoft Edge WebView2 Runtime.</p>

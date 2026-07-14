@@ -523,10 +523,10 @@ def _google_auto_language_detection_active() -> bool:
 def _show_voice_dictionary_auto_language_message() -> None:
 	gui.messageBox(
 		_(
-			"Voice dictionary preferences are unavailable while automatic language detection is enabled.\n\n"
+			"Voice dictionary preferences are unavailable while automatic language profiles are enabled.\n\n"
 			"Google TTS For NVDA may switch between several profile voices while speaking, so NVDA cannot "
 			"know which single voice dictionary to edit.\n\n"
-			"Open the Google TTS For NVDA category in NVDA Settings and turn off automatic language detection, "
+			"Open the Google TTS For NVDA category in NVDA Settings and turn off automatic language profiles, "
 			"then open Voice dictionary again."
 		),
 		_("Google TTS For NVDA"),

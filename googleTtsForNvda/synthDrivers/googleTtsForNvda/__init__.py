@@ -367,7 +367,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 	)
 	_AUTO_LANGUAGE_NOTICE_SETTING = ReadOnlyTextDriverSetting(
 		_AUTO_LANGUAGE_NOTICE_ID,
-		_("Auto-detect status"),
+		_("Automatic language profiles status"),
 		availableInSettingsRing=True,
 		useConfig=False,
 		defaultVal=_AUTO_LANGUAGE_NOTICE_ID,
@@ -1545,7 +1545,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 
 	def _auto_language_notice_message(self) -> str:
 		return _(
-			"Voice settings are managed by Google TTS for NVDA. "
+			"Voice settings are managed by automatic language profiles. "
 			"Open the Google TTS for NVDA category in NVDA Settings to configure them."
 		)
 
