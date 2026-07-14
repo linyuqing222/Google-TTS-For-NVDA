@@ -260,9 +260,27 @@ def download_package(package: VoicePackage, progress: ProgressCallback | None = 
 def copy_existing_package(source: Path, package: VoicePackage) -> Path:
 	target = package_file(package)
 	target.parent.mkdir(parents=True, exist_ok=True)
-	shutil.copy2(source, target)
-	_forget_verified_package(package.id)
-	if not is_package_installed(package):
-		target.unlink(missing_ok=True)
-		raise RuntimeError(_("Voice package {package} did not pass verification after import.").format(package=package.id))
-	return target
+	tmp = target.with_suffix(".import_tmp")
+	try:
+		tmp.unlink(missing_ok=True)
+		shutil.copy2(source, tmp)
+		if package.compressedSize and tmp.stat().st_size != package.compressedSize:
+			raise RuntimeError(
+				_("Voice package {package} did not pass verification after import.").format(
+					package=package.id
+				)
+			)
+		actualHash = sha256(tmp) if package.sha256Checksum else None
+		if package.sha256Checksum and actualHash is not None:
+			if actualHash.lower() != package.sha256Checksum.lower():
+				raise RuntimeError(
+					_("Voice package {package} did not pass verification after import.").format(
+						package=package.id
+					)
+				)
+		_forget_verified_package(package.id)
+		os.replace(tmp, target)
+		_remember_verified_package(package, target.stat(), actualHash)
+		return target
+	finally:
+		tmp.unlink(missing_ok=True)

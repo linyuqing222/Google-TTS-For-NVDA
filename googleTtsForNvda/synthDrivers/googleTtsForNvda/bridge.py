@@ -383,6 +383,99 @@ def find_browser(runtime: str | None = None) -> str | None:
 	return None
 
 
+class CdpDispatcher:
+	"""Event-driven WebSocket message dispatcher separating network receive loops from callers."""
+
+	def __init__(self, ws: websocket.WebSocket) -> None:
+		self._ws = ws
+		self._sendLock = threading.Lock()
+		self._stateLock = threading.Lock()
+		self._pendingEvents: dict[int, threading.Event] = {}
+		self._responses: dict[int, dict[str, Any]] = {}
+		self._eventHandlers: dict[int, Callable[[dict[str, Any]], None]] = {}
+		self._stopped = threading.Event()
+		self._readerThread: threading.Thread | None = None
+
+	def start(self) -> None:
+		with self._stateLock:
+			if self._readerThread is not None and self._readerThread.is_alive():
+				return
+			self._stopped.clear()
+			self._readerThread = threading.Thread(
+				name="googleTtsForNvda.cdpReader",
+				target=self._reader_loop,
+				daemon=True,
+			)
+			self._readerThread.start()
+
+	def stop(self) -> None:
+		self._stopped.set()
+		with self._stateLock:
+			for event in self._pendingEvents.values():
+				event.set()
+			self._pendingEvents.clear()
+			self._eventHandlers.clear()
+
+	def send(self, command: dict[str, Any]) -> None:
+		payload = json.dumps(command)
+		with self._sendLock:
+			self._ws.send(payload)
+
+	def register_request(
+		self,
+		msgId: int,
+		eventHandler: Callable[[dict[str, Any]], None] | None = None,
+	) -> threading.Event:
+		event = threading.Event()
+		with self._stateLock:
+			self._pendingEvents[msgId] = event
+			if eventHandler is not None:
+				self._eventHandlers[msgId] = eventHandler
+		return event
+
+	def unregister_request(self, msgId: int) -> dict[str, Any] | None:
+		with self._stateLock:
+			self._pendingEvents.pop(msgId, None)
+			self._eventHandlers.pop(msgId, None)
+			return self._responses.pop(msgId, None)
+
+	def _reader_loop(self) -> None:
+		try:
+			while not self._stopped.is_set():
+				try:
+					rawMessage = self._ws.recv()
+				except (websocket.WebSocketTimeoutException, TimeoutError):
+					continue
+				except Exception:
+					break
+				if not rawMessage:
+					break
+				try:
+					message = json.loads(rawMessage)
+				except Exception:
+					continue
+
+				with self._stateLock:
+					handlers = list(self._eventHandlers.values())
+					msgId = message.get("id")
+					event = self._pendingEvents.get(msgId) if msgId is not None else None
+					if event is not None and msgId is not None:
+						self._responses[msgId] = message
+
+				for handler in handlers:
+					try:
+						handler(message)
+					except Exception:
+						log.debug("Error in CDP event handler", exc_info=True)
+
+				if event is not None:
+					event.set()
+		finally:
+			with self._stateLock:
+				for ev in self._pendingEvents.values():
+					ev.set()
+
+
 class ChromeTtsBridge:
 	def __init__(self, catalog: VoiceCatalog | None = None) -> None:
 		self.catalog = catalog or VoiceCatalog.load()
@@ -392,6 +485,7 @@ class ChromeTtsBridge:
 		self._chromeProcess: subprocess.Popen[bytes] | None = None
 		self._debugPort: int | None = None
 		self._ws: websocket.WebSocket | None = None
+		self._dispatcher: CdpDispatcher | None = None
 		self._lock = threading.RLock()
 		self._msgIdLock = threading.Lock()
 		self._stopLock = threading.Lock()
@@ -406,14 +500,16 @@ class ChromeTtsBridge:
 
 	def ensure_connection(self) -> None:
 		with self._lock:
-			if self._ws is not None and self._ws.connected:
+			if self._ws is not None and self._ws.connected and self._dispatcher is not None:
 				return
 			try:
 				self._start_server()
 				self._start_chrome()
 				wsUrl = self._get_page_websocket_url()
 				self._ws = websocket.create_connection(wsUrl, timeout=15)
-				self._ws.settimeout(RECV_POLL_TIMEOUT)
+				self._ws.settimeout(0.05)
+				self._dispatcher = CdpDispatcher(self._ws)
+				self._dispatcher.start()
 				self._cdp_request("Runtime.enable", timeout=15)
 				self._cdp_request("Page.enable", timeout=15)
 				self._cdp_request("Runtime.addBinding", {"name": BINDING_NAME}, timeout=15)
@@ -875,65 +971,56 @@ class ChromeTtsBridge:
 		eventHandler: Callable[[dict[str, Any]], None] | None = None,
 		cancelEvent: threading.Event | None = None,
 	) -> dict[str, Any]:
-		if self._ws is None:
+		dispatcher = self._dispatcher
+		if self._ws is None or dispatcher is None:
 			raise _friendly_cdp_error(
 				_("Google TTS For NVDA is not connected to the browser runtime."),
 				"Browser DevTools websocket is not connected.",
 			)
 		msgId = self._next_msg_id()
 		command = {"id": msgId, "method": method, "params": params or {}}
-		with self._lock:
-			self._runtimeBusy = cancelEvent is not None
-			try:
-				self._ws.send(json.dumps(command))
-				deadline = time.monotonic() + timeout
-				while time.monotonic() < deadline:
-					if cancelEvent is not None and cancelEvent.is_set():
-						self._send_stop()
-						while True:
-							try:
-								self._ws.recv()
-							except websocket.WebSocketTimeoutException:
-								break
-							except Exception:
-								break
-						raise CdpCancelled()
-					try:
-						rawMessage = self._ws.recv()
-					except websocket.WebSocketTimeoutException:
-						continue
-					if not rawMessage:
-						raise _friendly_cdp_error(
-							_("The browser runtime connection closed unexpectedly."),
-							"Browser DevTools websocket closed.",
-						)
-					message = json.loads(rawMessage)
-					if eventHandler is not None:
-						eventHandler(message)
-					if message.get("id") != msgId:
-						continue
-					if "error" in message:
-						raise _friendly_cdp_error(
-							_("The browser runtime reported an error while processing speech."),
-							f"CDP error for {method}: {message['error']}",
-						)
-					exceptionDetails = message.get("result", {}).get("exceptionDetails")
-					if isinstance(exceptionDetails, dict):
-						raise _friendly_cdp_error(
-							_("The browser runtime reported an error while preparing speech."),
-							self._format_exception(exceptionDetails),
-						)
-					return message
-			finally:
-				self._runtimeBusy = False
-		raise _friendly_cdp_error(
-			_("The browser runtime did not respond in time."),
-			f"Timed out waiting for {method}.",
-		)
+		self._runtimeBusy = cancelEvent is not None
+		event = dispatcher.register_request(msgId, eventHandler=eventHandler)
+		try:
+			dispatcher.send(command)
+			deadline = time.monotonic() + timeout
+			while time.monotonic() < deadline:
+				if cancelEvent is not None and cancelEvent.is_set():
+					self._send_stop()
+					raise CdpCancelled()
+				if event.wait(timeout=0.01):
+					break
+			else:
+				raise _friendly_cdp_error(
+					_("The browser runtime did not respond in time."),
+					f"Timed out waiting for {method}.",
+				)
+		finally:
+			response = dispatcher.unregister_request(msgId)
+			self._runtimeBusy = False
+
+		if response is None:
+			raise _friendly_cdp_error(
+				_("The browser runtime connection closed unexpectedly."),
+				"Browser DevTools websocket closed.",
+			)
+		if "error" in response:
+			raise _friendly_cdp_error(
+				_("The browser runtime reported an error while processing speech."),
+				f"CDP error for {method}: {response['error']}",
+			)
+		exceptionDetails = response.get("result", {}).get("exceptionDetails")
+		if isinstance(exceptionDetails, dict):
+			raise _friendly_cdp_error(
+				_("The browser runtime reported an error while preparing speech."),
+				self._format_exception(exceptionDetails),
+			)
+		return response
 
 	def _send_stop(self) -> None:
 		ws = self._ws
-		if ws is None or not ws.connected:
+		dispatcher = self._dispatcher
+		if ws is None or not ws.connected or dispatcher is None:
 			return
 		with self._stopLock:
 			now = time.monotonic()
@@ -950,7 +1037,7 @@ class ChromeTtsBridge:
 						"returnByValue": True,
 					},
 				}
-				ws.send(json.dumps(command))
+				dispatcher.send(command)
 			except Exception:
 				log.debug("Could not send fast browser speech stop command.", exc_info=True)
 
@@ -979,6 +1066,9 @@ class ChromeTtsBridge:
 		)
 
 	def _close_websocket(self) -> None:
+		if self._dispatcher is not None:
+			self._dispatcher.stop()
+			self._dispatcher = None
 		if self._ws is None:
 			return
 		try:

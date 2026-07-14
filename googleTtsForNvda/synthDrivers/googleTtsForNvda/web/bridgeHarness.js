@@ -11,8 +11,8 @@
 	let stopped = false;
 	let initPromise = null;
 	let suppressBridgeAudio = false;
-	const firstAudioPacketSamples = 12;
-	const steadyAudioPacketSamples = 240;
+	const firstAudioPacketSamples = 120;
+	const steadyAudioPacketSamples = 1200;
 	const agcTargetRms = 0.18;
 	const agcSilenceFloor = 0.012;
 	const agcMinGain = 0.55;
@@ -232,6 +232,45 @@
 		return sign * Math.min(softLimiterCeiling, shaped);
 	}
 
+	const base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+	function fastUint8ToBase64(uint8Array) {
+		const len = uint8Array.length;
+		const extraBytes = len % 3;
+		let output = "";
+		const parts = [];
+
+		for (let i = 0, len2 = len - extraBytes; i < len2; i += 3) {
+			const triplet = (uint8Array[i] << 16) + (uint8Array[i + 1] << 8) + uint8Array[i + 2];
+			parts.push(
+				base64Chars.charAt((triplet >> 18) & 0x3f) +
+					base64Chars.charAt((triplet >> 12) & 0x3f) +
+					base64Chars.charAt((triplet >> 6) & 0x3f) +
+					base64Chars.charAt(triplet & 0x3f)
+			);
+			if (parts.length >= 1024) {
+				output += parts.join("");
+				parts.length = 0;
+			}
+		}
+		if (parts.length > 0) {
+			output += parts.join("");
+		}
+
+		if (extraBytes === 1) {
+			const val = uint8Array[len - 1];
+			output += base64Chars.charAt(val >> 2) + base64Chars.charAt((val << 4) & 0x3f) + "==";
+		} else if (extraBytes === 2) {
+			const val = (uint8Array[len - 2] << 8) + uint8Array[len - 1];
+			output +=
+				base64Chars.charAt(val >> 10) +
+				base64Chars.charAt((val >> 4) & 0x3f) +
+				base64Chars.charAt((val << 2) & 0x3f) +
+				"=";
+		}
+		return output;
+	}
+
 	function buffersToPcmBase64(buffers, sampleCount) {
 		const bytes = new Uint8Array(sampleCount * 2);
 		const view = new DataView(bytes.buffer);
@@ -245,12 +284,7 @@
 				outputIndex++;
 			}
 		}
-		let binary = "";
-		const chunkSize = 0x8000;
-		for (let index = 0; index < bytes.length; index += chunkSize) {
-			binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
-		}
-		return btoa(binary);
+		return fastUint8ToBase64(bytes);
 	}
 
 	function resetAudioQueue() {
