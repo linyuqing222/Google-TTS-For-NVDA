@@ -8,8 +8,9 @@ import addonHandler
 import config
 import globalVars
 import gui
-from gui import guiHelper
+from gui import guiHelper, nvdaControls
 from gui.settingsDialogs import SettingsPanel
+import languageHandler
 from logHandler import log
 import synthDriverHandler
 import ui
@@ -61,6 +62,17 @@ def _nvda_synth_setting_name(settingFactory: object, fallback: str) -> str:
 	except Exception:
 		pass
 	return fallback
+
+
+def _nvda_label(message: str) -> str:
+	try:
+		translationRef = getattr(languageHandler, "installedTranslation", None)
+		translation = translationRef() if translationRef is not None else None
+		if translation is not None:
+			return str(translation.gettext(message))
+	except Exception:
+		log.debug("Could not use NVDA translation for setting label.", exc_info=True)
+	return message
 
 
 def _focusable_status_text(parent: wx.Window, message: str, name: str) -> wx.TextCtrl:
@@ -194,6 +206,10 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 		self._rateBoostSettingName = _nvda_synth_setting_name(synthDriverHandler.SynthDriver.RateBoostSetting, "Rate boost")
 		self._pitchSettingName = _nvda_synth_setting_name(synthDriverHandler.SynthDriver.PitchSetting, "Pitch")
 		self._volumeSettingName = _nvda_synth_setting_name(synthDriverHandler.SynthDriver.VolumeSetting, "Volume")
+		self._capPitchSettingName = _nvda_label("Capital pitch change percentage")
+		self._sayCapSettingName = _nvda_label("Say &cap before capitals")
+		self._beepCapsSettingName = _nvda_label("&Beep for capitals")
+		self._spellingSettingName = _nvda_label("Use &spelling functionality if supported")
 		self._preferredLanguageValues = self._enabled_auto_language_candidates()
 
 		helper = guiHelper.BoxSizerHelper(self, sizer=settingsSizer)
@@ -283,12 +299,36 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 		)
 		self.autoProfileVolumeSlider.SetName(self._volumeSettingName)
 		_bind_slider_page_keys(self.autoProfileVolumeSlider)
+		self.autoProfileCapPitchEdit = helper.addLabeledControl(
+			f"{self._capPitchSettingName}:",
+			nvdaControls.SelectOnFocusSpinCtrl,
+			min=-100,
+			max=100,
+			initial=30,
+		)
+		self.autoProfileCapPitchEdit.SetName(self._capPitchSettingName)
+		self.autoProfileSayCapCheck = helper.addItem(
+			wx.CheckBox(self, label=self._sayCapSettingName),
+		)
+		self.autoProfileSayCapCheck.SetName(self._sayCapSettingName.replace("&", ""))
+		self.autoProfileBeepCapsCheck = helper.addItem(
+			wx.CheckBox(self, label=self._beepCapsSettingName),
+		)
+		self.autoProfileBeepCapsCheck.SetName(self._beepCapsSettingName.replace("&", ""))
+		self.autoProfileSpellingCheck = helper.addItem(
+			wx.CheckBox(self, label=self._spellingSettingName),
+		)
+		self.autoProfileSpellingCheck.SetName(self._spellingSettingName.replace("&", ""))
 		self._autoProfileValueControls = (
 			self.autoProfileVoiceChoice,
 			self.autoProfileRateSlider,
 			self.autoProfileRateBoostCheck,
 			self.autoProfilePitchSlider,
 			self.autoProfileVolumeSlider,
+			self.autoProfileCapPitchEdit,
+			self.autoProfileSayCapCheck,
+			self.autoProfileBeepCapsCheck,
+			self.autoProfileSpellingCheck,
 		)
 		self._load_selected_auto_language_profile()
 		self.autoLanguageStatusText = helper.addItem(
@@ -404,6 +444,10 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 			"rateBoost": False,
 			"pitch": 50,
 			"volume": 100,
+			"capPitchChange": 30,
+			"sayCapForCapitals": False,
+			"beepForCapitals": False,
+			"useSpellingFunctionality": True,
 		}
 		try:
 			currentSynth = synthDriverHandler.getSynth()
@@ -414,6 +458,11 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 			defaults["rateBoost"] = bool(getattr(currentSynth, "rateBoost", False))
 			defaults["pitch"] = max(0, min(100, int(getattr(currentSynth, "pitch", 50))))
 			defaults["volume"] = max(0, min(100, int(getattr(currentSynth, "volume", 100))))
+			synthConfig = config.conf["speech"][SYNTH_NAME]
+			defaults["capPitchChange"] = self._profile_cap_pitch(synthConfig.get("capPitchChange"), 30)
+			defaults["sayCapForCapitals"] = self._profile_bool(synthConfig.get("sayCapForCapitals"), False)
+			defaults["beepForCapitals"] = self._profile_bool(synthConfig.get("beepForCapitals"), False)
+			defaults["useSpellingFunctionality"] = self._profile_bool(synthConfig.get("useSpellingFunctionality"), True)
 		except Exception:
 			log.debug("Could not read current Google TTS speech settings.", exc_info=True)
 		return defaults
@@ -509,6 +558,22 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 			profile["rateBoost"] = self._profile_bool(profile.get("rateBoost"), bool(self._speechDefaults["rateBoost"]))
 			profile["pitch"] = self._profile_int(profile.get("pitch"), int(self._speechDefaults["pitch"]))
 			profile["volume"] = self._profile_int(profile.get("volume"), int(self._speechDefaults["volume"]))
+			profile["capPitchChange"] = self._profile_cap_pitch(
+				profile.get("capPitchChange"),
+				int(self._speechDefaults["capPitchChange"]),
+			)
+			profile["sayCapForCapitals"] = self._profile_bool(
+				profile.get("sayCapForCapitals"),
+				bool(self._speechDefaults["sayCapForCapitals"]),
+			)
+			profile["beepForCapitals"] = self._profile_bool(
+				profile.get("beepForCapitals"),
+				bool(self._speechDefaults["beepForCapitals"]),
+			)
+			profile["useSpellingFunctionality"] = self._profile_bool(
+				profile.get("useSpellingFunctionality"),
+				bool(self._speechDefaults["useSpellingFunctionality"]),
+			)
 			self._autoLanguageProfiles[language] = profile
 
 	def _format_voice_choice(self, speaker: Speaker) -> str:
@@ -534,6 +599,12 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 			return max(0, min(100, int(value)))
 		except (TypeError, ValueError):
 			return max(0, min(100, int(default)))
+
+	def _profile_cap_pitch(self, value: object, default: int) -> int:
+		try:
+			return max(-100, min(100, int(value)))
+		except (TypeError, ValueError):
+			return max(-100, min(100, int(default)))
 
 	def _profile_bool(self, value: object, default: bool = False) -> bool:
 		if isinstance(value, str):
@@ -568,6 +639,10 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 			self.autoProfileRateBoostCheck.SetValue(self._profile_bool(profile.get("rateBoost")))
 			self.autoProfilePitchSlider.SetValue(self._profile_int(profile.get("pitch"), 50))
 			self.autoProfileVolumeSlider.SetValue(self._profile_int(profile.get("volume"), 100))
+			self.autoProfileCapPitchEdit.SetValue(self._profile_cap_pitch(profile.get("capPitchChange"), 30))
+			self.autoProfileSayCapCheck.SetValue(self._profile_bool(profile.get("sayCapForCapitals")))
+			self.autoProfileBeepCapsCheck.SetValue(self._profile_bool(profile.get("beepForCapitals")))
+			self.autoProfileSpellingCheck.SetValue(self._profile_bool(profile.get("useSpellingFunctionality"), True))
 		finally:
 			self._loadingAutoLanguageProfile = False
 		self._refresh_auto_language_profile_value_controls()
@@ -586,6 +661,10 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 			"rateBoost": bool(self.autoProfileRateBoostCheck.GetValue()),
 			"pitch": self._profile_int(self.autoProfilePitchSlider.GetValue(), 50),
 			"volume": self._profile_int(self.autoProfileVolumeSlider.GetValue(), 100),
+			"capPitchChange": self._profile_cap_pitch(self.autoProfileCapPitchEdit.Value, 30),
+			"sayCapForCapitals": bool(self.autoProfileSayCapCheck.GetValue()),
+			"beepForCapitals": bool(self.autoProfileBeepCapsCheck.GetValue()),
+			"useSpellingFunctionality": bool(self.autoProfileSpellingCheck.GetValue()),
 		}
 
 	def _checked_auto_language_candidates(self) -> list[str]:
@@ -601,6 +680,13 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 	def _auto_language_status_message(self) -> str:
 		if not self._languageValues:
 			return _("Install at least one language voice package to use auto-detect.")
+		if not self.autoLanguageCheck.GetValue():
+			return _(
+				"Automatic language profiles are off. "
+				"Google TTS uses NVDA's normal Speech Settings for voice, rate, pitch, volume, capitals, and spelling."
+			)
+		if not self._enabled_auto_language_candidates():
+			return _("Select at least one language profile to use auto-detect.")
 		return _(
 			"Auto-detect uses the selected installed language profiles. "
 			"If only one language is selected, that profile is used for every sentence."
@@ -619,6 +705,10 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 		self.autoProfileRateBoostCheck.Enable(profileEnabled)
 		self.autoProfilePitchSlider.Enable(profileEnabled)
 		self.autoProfileVolumeSlider.Enable(profileEnabled)
+		self.autoProfileCapPitchEdit.Enable(profileEnabled)
+		self.autoProfileSayCapCheck.Enable(profileEnabled)
+		self.autoProfileBeepCapsCheck.Enable(profileEnabled)
+		self.autoProfileSpellingCheck.Enable(profileEnabled)
 		self._refresh_auto_language_profile_value_controls()
 		self.autoLanguageStatusText.SetValue(self._auto_language_status_message())
 		if not available:
@@ -659,6 +749,10 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 				"rateBoost": bool(profile.get("rateBoost", False)),
 				"pitch": self._profile_int(profile.get("pitch"), 50),
 				"volume": self._profile_int(profile.get("volume"), 100),
+				"capPitchChange": self._profile_cap_pitch(profile.get("capPitchChange"), 30),
+				"sayCapForCapitals": bool(profile.get("sayCapForCapitals", False)),
+				"beepForCapitals": bool(profile.get("beepForCapitals", False)),
+				"useSpellingFunctionality": bool(profile.get("useSpellingFunctionality", True)),
 			}
 			for language, profile in self._autoLanguageProfiles.items()
 			if language in self._languageValues

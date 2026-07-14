@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import threading
 from typing import Any
 
 import addonHandler
@@ -12,11 +13,13 @@ import globalVars
 import gui
 from gui import guiHelper
 import speech.extensions
+import speech.shortcutKeys as shortcutKeysModule
 from speech import speech as speechModule
 from speech.commands import LangChangeCommand
 import speechDictHandler
 import synthDriverHandler
 import wx
+from autoSettingsUtils.driverSetting import BooleanDriverSetting, NumericDriverSetting
 from logHandler import log
 
 from synthDrivers.googleTtsForNvda.bridge import (
@@ -56,14 +59,23 @@ _originalSetSynth: Any | None = None
 _originalSettingsDialogSetSynth: Any | None = None
 _originalAutoSettingsGetSettingMaker: Any | None = None
 _originalAutoSettingsUpdateValueForControl: Any | None = None
+_originalAutoSettingsOnDiscard: Any | None = None
+_originalVoiceSettingsMakeSettings: Any | None = None
 _originalSpeechProcessText: Any | None = None
+_originalSpeechGetSpellingSpeech: Any | None = None
+_originalShortcutKeysShouldUseSpellingFunctionality: Any | None = None
 _originalPopupSettingsDialog: Any | None = None
 _patchedAutoSettingsGetSettingMaker: Any | None = None
 _patchedAutoSettingsUpdateValueForControl: Any | None = None
+_patchedAutoSettingsOnDiscard: Any | None = None
+_patchedVoiceSettingsMakeSettings: Any | None = None
 _patchedSpeechProcessText: Any | None = None
+_patchedSpeechGetSpellingSpeech: Any | None = None
+_patchedShortcutKeysShouldUseSpellingFunctionality: Any | None = None
 _patchedPopupSettingsDialog: Any | None = None
 _autoLanguageSpeechFilterRegistered = False
 _missingVoicesPromptActive = False
+_speechConfigOverlayLock = threading.RLock()
 
 
 def _call_set_synth_compat(
@@ -330,6 +342,7 @@ def _make_read_only_text_setting_control(self: Any, setting: Any, settingsStorag
 	edit = labeledControl.control
 	edit.SetName(str(getattr(setting, "displayName", setting.id)))
 	setattr(self, f"{setting.id}Edit", edit)
+	setattr(self, f"{setting.id}List", edit)
 	try:
 		self.bindHelpEvent(getattr(self, "_getSettingControlHelpId")(setting.id), edit)
 	except Exception:
@@ -351,18 +364,59 @@ def _is_google_tts_read_only_setting(setting: Any, settingsStorage: Any | None =
 	return True
 
 
+def _hide_google_tts_auto_profile_speech_controls(panel: Any) -> None:
+	if not _google_auto_language_detection_active():
+		return
+	for controlName in (
+		"capPitchChangeEdit",
+		"sayCapForCapsCheckBox",
+		"beepForCapsCheckBox",
+		"useSpellingFunctionalityCheckBox",
+	):
+		control = getattr(panel, controlName, None)
+		if control is None:
+			continue
+		try:
+			if controlName == "capPitchChangeEdit":
+				sizer = control.GetContainingSizer()
+				if sizer is not None:
+					sizer.ShowItems(False)
+					continue
+			control.Hide()
+			control.Disable()
+		except Exception:
+			log.debug("Could not hide Google TTS auto-profile speech setting.", exc_info=True)
+	try:
+		panel.Layout()
+		parent = panel.GetParent()
+		if parent is not None:
+			parent.Layout()
+	except Exception:
+		log.debug("Could not relayout Google TTS Speech Settings controls.", exc_info=True)
+
+
 def _patch_read_only_text_setting() -> None:
-	global _originalAutoSettingsGetSettingMaker, _originalAutoSettingsUpdateValueForControl
-	global _patchedAutoSettingsGetSettingMaker, _patchedAutoSettingsUpdateValueForControl
+	global _originalAutoSettingsGetSettingMaker, _originalAutoSettingsUpdateValueForControl, _originalAutoSettingsOnDiscard
+	global _originalVoiceSettingsMakeSettings
+	global _patchedAutoSettingsGetSettingMaker, _patchedAutoSettingsUpdateValueForControl, _patchedAutoSettingsOnDiscard
+	global _patchedVoiceSettingsMakeSettings
 	if _originalAutoSettingsGetSettingMaker is not None:
 		return
 	autoSettingsMixin = getattr(gui.settingsDialogs, "AutoSettingsMixin", None)
 	if autoSettingsMixin is None:
 		return
+	voiceSettingsPanel = getattr(gui.settingsDialogs, "VoiceSettingsPanel", None)
 	_originalAutoSettingsGetSettingMaker = autoSettingsMixin._getSettingMaker
 	_originalAutoSettingsUpdateValueForControl = autoSettingsMixin._updateValueForControl
+	_originalAutoSettingsOnDiscard = autoSettingsMixin.onDiscard
 	originalGetSettingMaker = _originalAutoSettingsGetSettingMaker
 	originalUpdateValueForControl = _originalAutoSettingsUpdateValueForControl
+	originalOnDiscard = _originalAutoSettingsOnDiscard
+	if voiceSettingsPanel is not None:
+		_originalVoiceSettingsMakeSettings = voiceSettingsPanel.makeSettings
+		originalVoiceMakeSettings = _originalVoiceSettingsMakeSettings
+	else:
+		originalVoiceMakeSettings = None
 
 	def _get_setting_maker(self: Any, setting: Any) -> Any:
 		if _is_google_tts_read_only_setting(setting):
@@ -386,15 +440,45 @@ def _patch_read_only_text_setting() -> None:
 			return
 		return originalUpdateValueForControl(self, setting, settingsStorage)
 
+	def _on_discard(self: Any) -> None:
+		try:
+			settingsInst = self.getSettings()
+		except Exception:
+			return originalOnDiscard(self)
+		if getattr(settingsInst, "name", "") != SYNTH_NAME:
+			return originalOnDiscard(self)
+		for setting in getattr(settingsInst, "supportedSettings", ()):
+			if isinstance(setting, (NumericDriverSetting, BooleanDriverSetting)):
+				continue
+			control = getattr(self, f"{setting.id}List", None)
+			if control is None:
+				continue
+			try:
+				control.Unbind(wx.EVT_CHOICE)
+			except Exception:
+				log.debug("Could not unbind Google TTS speech setting control.", exc_info=True)
+		settingsInst.loadSettings()
+
+	def _voice_make_settings(self: Any, settingsSizer: wx.Sizer) -> None:
+		originalVoiceMakeSettings(self, settingsSizer)
+		_hide_google_tts_auto_profile_speech_controls(self)
+
 	_patchedAutoSettingsGetSettingMaker = _get_setting_maker
 	_patchedAutoSettingsUpdateValueForControl = _update_value_for_control
+	_patchedAutoSettingsOnDiscard = _on_discard
 	autoSettingsMixin._getSettingMaker = _get_setting_maker
 	autoSettingsMixin._updateValueForControl = _update_value_for_control
+	autoSettingsMixin.onDiscard = _on_discard
+	if voiceSettingsPanel is not None and originalVoiceMakeSettings is not None:
+		_patchedVoiceSettingsMakeSettings = _voice_make_settings
+		voiceSettingsPanel.makeSettings = _voice_make_settings
 
 
 def _unpatch_read_only_text_setting() -> None:
-	global _originalAutoSettingsGetSettingMaker, _originalAutoSettingsUpdateValueForControl
-	global _patchedAutoSettingsGetSettingMaker, _patchedAutoSettingsUpdateValueForControl
+	global _originalAutoSettingsGetSettingMaker, _originalAutoSettingsUpdateValueForControl, _originalAutoSettingsOnDiscard
+	global _originalVoiceSettingsMakeSettings
+	global _patchedAutoSettingsGetSettingMaker, _patchedAutoSettingsUpdateValueForControl, _patchedAutoSettingsOnDiscard
+	global _patchedVoiceSettingsMakeSettings
 	if _originalAutoSettingsGetSettingMaker is None:
 		return
 	autoSettingsMixin = getattr(gui.settingsDialogs, "AutoSettingsMixin", None)
@@ -406,10 +490,26 @@ def _unpatch_read_only_text_setting() -> None:
 			and getattr(autoSettingsMixin, "_updateValueForControl", None) is _patchedAutoSettingsUpdateValueForControl
 		):
 			autoSettingsMixin._updateValueForControl = _originalAutoSettingsUpdateValueForControl
+		if (
+			_originalAutoSettingsOnDiscard is not None
+			and getattr(autoSettingsMixin, "onDiscard", None) is _patchedAutoSettingsOnDiscard
+		):
+			autoSettingsMixin.onDiscard = _originalAutoSettingsOnDiscard
+	voiceSettingsPanel = getattr(gui.settingsDialogs, "VoiceSettingsPanel", None)
+	if (
+		voiceSettingsPanel is not None
+		and _originalVoiceSettingsMakeSettings is not None
+		and getattr(voiceSettingsPanel, "makeSettings", None) is _patchedVoiceSettingsMakeSettings
+	):
+		voiceSettingsPanel.makeSettings = _originalVoiceSettingsMakeSettings
 	_originalAutoSettingsGetSettingMaker = None
 	_originalAutoSettingsUpdateValueForControl = None
+	_originalAutoSettingsOnDiscard = None
+	_originalVoiceSettingsMakeSettings = None
 	_patchedAutoSettingsGetSettingMaker = None
 	_patchedAutoSettingsUpdateValueForControl = None
+	_patchedAutoSettingsOnDiscard = None
+	_patchedVoiceSettingsMakeSettings = None
 
 
 def _google_auto_language_detection_active() -> bool:
@@ -627,6 +727,77 @@ def _auto_profile_voice_for_language(synth: Any, language: str | None) -> str | 
 	return synth._voice_for_language(targetLanguage, synth.voice)
 
 
+def _profile_int(value: Any, default: int, minimum: int = 0, maximum: int = 100) -> int:
+	try:
+		return max(minimum, min(maximum, int(value)))
+	except (TypeError, ValueError):
+		return max(minimum, min(maximum, int(default)))
+
+
+def _profile_bool(value: Any, default: bool = False) -> bool:
+	if isinstance(value, str):
+		return value.strip().lower() in ("1", "true", "yes", "on")
+	if value is None:
+		return default
+	return bool(value)
+
+
+def _auto_profile_character_settings_for_language(synth: Any, language: str | None) -> dict[str, Any] | None:
+	candidates = synth._auto_language_candidates()
+	if not candidates:
+		return None
+	targetLanguage = language
+	if not targetLanguage and len(candidates) == 1:
+		targetLanguage = candidates[0]
+	if not targetLanguage:
+		return None
+	profileLanguage = synth._auto_language_candidate_for_language(targetLanguage, candidates)
+	if not profileLanguage:
+		return None
+	profile = synth._auto_language_profile_for_language(profileLanguage)
+	try:
+		synthConfig = config.conf["speech"][SYNTH_NAME]
+	except Exception:
+		return None
+	return {
+		"capPitchChange": _profile_int(profile.get("capPitchChange"), synthConfig["capPitchChange"], -100, 100),
+		"sayCapForCapitals": _profile_bool(profile.get("sayCapForCapitals"), synthConfig["sayCapForCapitals"]),
+		"beepForCapitals": _profile_bool(profile.get("beepForCapitals"), synthConfig["beepForCapitals"]),
+		"useSpellingFunctionality": _profile_bool(
+			profile.get("useSpellingFunctionality"),
+			synthConfig["useSpellingFunctionality"],
+		),
+	}
+
+
+def _auto_profile_character_settings_for_text(locale: str | None, text: str | None) -> dict[str, Any] | None:
+	if not isinstance(text, str):
+		return None
+	try:
+		synth = synthDriverHandler.getSynth()
+		if getattr(synth, "name", "") != SYNTH_NAME or not synth._auto_language_detection_enabled():
+			return None
+		targetLanguage = _auto_language_for_process_text(synth, locale, text)
+		return _auto_profile_character_settings_for_language(synth, targetLanguage)
+	except Exception:
+		log.debug("Could not resolve Google TTS auto-language character settings.", exc_info=True)
+		return None
+
+
+def _single_auto_profile_character_settings() -> dict[str, Any] | None:
+	try:
+		synth = synthDriverHandler.getSynth()
+		if getattr(synth, "name", "") != SYNTH_NAME or not synth._auto_language_detection_enabled():
+			return None
+		candidates = synth._auto_language_candidates()
+		if len(candidates) != 1:
+			return None
+		return _auto_profile_character_settings_for_language(synth, candidates[0])
+	except Exception:
+		log.debug("Could not resolve single Google TTS auto-language character profile.", exc_info=True)
+		return None
+
+
 class _VoiceDictionarySynthProxy:
 	"""Expose another voice to NVDA's voice dictionary loader without changing the live synth."""
 
@@ -701,11 +872,22 @@ def _unregister_auto_language_speech_filter() -> None:
 
 
 def _patch_auto_language_voice_dictionary() -> None:
-	global _originalSpeechProcessText, _patchedSpeechProcessText
+	global _originalSpeechProcessText, _originalSpeechGetSpellingSpeech
+	global _originalShortcutKeysShouldUseSpellingFunctionality
+	global _patchedSpeechProcessText, _patchedSpeechGetSpellingSpeech
+	global _patchedShortcutKeysShouldUseSpellingFunctionality
 	if _originalSpeechProcessText is not None:
 		return
 	_originalSpeechProcessText = speechModule.processText
+	_originalSpeechGetSpellingSpeech = speechModule.getSpellingSpeech
+	_originalShortcutKeysShouldUseSpellingFunctionality = getattr(
+		shortcutKeysModule,
+		"shouldUseSpellingFunctionality",
+		None,
+	)
 	originalProcessText = _originalSpeechProcessText
+	originalGetSpellingSpeech = _originalSpeechGetSpellingSpeech
+	originalShouldUseSpellingFunctionality = _originalShortcutKeysShouldUseSpellingFunctionality
 
 	def process_text_with_auto_voice_dictionary(*args: Any, **kwargs: Any) -> str:
 		argsList = list(args)
@@ -740,23 +922,88 @@ def _patch_auto_language_voice_dictionary() -> None:
 				return call_original_with_locale(effectiveLocale)
 			finally:
 				if restoreVoiceDict:
-					speechDictHandler.loadVoiceDict(synth)
+					try:
+						speechDictHandler.loadVoiceDict(synth)
+					except Exception:
+						log.debug("Could not restore Google TTS voice dictionary.", exc_info=True)
 		except Exception:
 			log.debug("Could not apply Google TTS auto-language voice dictionary.", exc_info=True)
 			return call_original_with_locale()
 
+	def get_spelling_speech_with_auto_profile(
+		text: str,
+		locale: str | None = None,
+		useCharacterDescriptions: bool = False,
+	) -> Any:
+		settings = _auto_profile_character_settings_for_text(locale, text)
+		if not settings:
+			yield from originalGetSpellingSpeech(text, locale=locale, useCharacterDescriptions=useCharacterDescriptions)
+			return
+		with _speechConfigOverlayLock:
+			try:
+				synthConfig = config.conf["speech"][SYNTH_NAME]
+				originalSettings = {
+					"capPitchChange": synthConfig["capPitchChange"],
+					"sayCapForCapitals": synthConfig["sayCapForCapitals"],
+					"beepForCapitals": synthConfig["beepForCapitals"],
+					"useSpellingFunctionality": synthConfig["useSpellingFunctionality"],
+				}
+			except Exception:
+				log.debug("Could not apply Google TTS auto-language spelling settings.", exc_info=True)
+				yield from originalGetSpellingSpeech(text, locale=locale, useCharacterDescriptions=useCharacterDescriptions)
+				return
+			for key, value in settings.items():
+				synthConfig[key] = value
+			try:
+				yield from originalGetSpellingSpeech(
+					text,
+					locale=locale,
+					useCharacterDescriptions=useCharacterDescriptions,
+				)
+			finally:
+				for key, value in originalSettings.items():
+					synthConfig[key] = value
+
+	def should_use_spelling_functionality_with_auto_profile() -> bool:
+		settings = _single_auto_profile_character_settings()
+		if settings is not None:
+			return bool(settings.get("useSpellingFunctionality", True))
+		if originalShouldUseSpellingFunctionality is not None:
+			return bool(originalShouldUseSpellingFunctionality())
+		return True
+
 	_patchedSpeechProcessText = process_text_with_auto_voice_dictionary
+	_patchedSpeechGetSpellingSpeech = get_spelling_speech_with_auto_profile
+	_patchedShortcutKeysShouldUseSpellingFunctionality = should_use_spelling_functionality_with_auto_profile
 	speechModule.processText = process_text_with_auto_voice_dictionary
+	speechModule.getSpellingSpeech = get_spelling_speech_with_auto_profile
+	if originalShouldUseSpellingFunctionality is not None:
+		shortcutKeysModule.shouldUseSpellingFunctionality = should_use_spelling_functionality_with_auto_profile
 
 
 def _unpatch_auto_language_voice_dictionary() -> None:
-	global _originalSpeechProcessText, _patchedSpeechProcessText
+	global _originalSpeechProcessText, _originalSpeechGetSpellingSpeech
+	global _originalShortcutKeysShouldUseSpellingFunctionality
+	global _patchedSpeechProcessText, _patchedSpeechGetSpellingSpeech
+	global _patchedShortcutKeysShouldUseSpellingFunctionality
 	if _originalSpeechProcessText is None:
 		return
 	if getattr(speechModule, "processText", None) is _patchedSpeechProcessText:
 		speechModule.processText = _originalSpeechProcessText
+	if getattr(speechModule, "getSpellingSpeech", None) is _patchedSpeechGetSpellingSpeech:
+		speechModule.getSpellingSpeech = _originalSpeechGetSpellingSpeech
+	if (
+		_originalShortcutKeysShouldUseSpellingFunctionality is not None
+		and getattr(shortcutKeysModule, "shouldUseSpellingFunctionality", None)
+		is _patchedShortcutKeysShouldUseSpellingFunctionality
+	):
+		shortcutKeysModule.shouldUseSpellingFunctionality = _originalShortcutKeysShouldUseSpellingFunctionality
 	_originalSpeechProcessText = None
+	_originalSpeechGetSpellingSpeech = None
+	_originalShortcutKeysShouldUseSpellingFunctionality = None
 	_patchedSpeechProcessText = None
+	_patchedSpeechGetSpellingSpeech = None
+	_patchedShortcutKeysShouldUseSpellingFunctionality = None
 
 
 def _close_voice_manager() -> None:

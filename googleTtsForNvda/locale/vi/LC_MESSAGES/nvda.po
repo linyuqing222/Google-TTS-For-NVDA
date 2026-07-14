@@ -6,7 +6,7 @@ msgstr ""
 "Project-Id-Version: Google TTS Cho NVDA 0.3\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-07-10 00:00+0700\n"
-"PO-Revision-Date: 2026-07-13 23:04+0700\n"
+"PO-Revision-Date: 2026-07-14 12:58+0700\n"
 "Last-Translator: Nguyễn Anh Đức, Đào Đức Trung và Phạm Hùng Vương\n"
 "Language-Team: Vietnamese\n"
 "Language: vi\n"
@@ -45,6 +45,9 @@ msgstr "Tiếng Albania"
 msgid "All"
 msgstr "Tất cả"
 
+msgid "Automatic language profiles are off. Google TTS uses NVDA's normal Speech Settings for voice, rate, pitch, volume, capitals, and spelling."
+msgstr "Hồ sơ ngôn ngữ tự động đang tắt. Google TTS sử dụng cấu hình giọng đọc bình thường của NVDA cho giọng, tốc độ, cao độ, âm lượng, chữ hoa và chức năng chính tả."
+
 msgid "&Use automatic language profiles"
 msgstr "&Sử dụng hồ sơ ngôn ngữ tự động"
 
@@ -64,7 +67,7 @@ msgid "Auto-detect status"
 msgstr "Trạng thái tự động phát hiện"
 
 msgid "Auto-detect language &profile:"
-msgstr "&Tự động phát hiện ngôn ngữ và hồ sơ"
+msgstr "&Tự động phát hiện ngôn ngữ và hồ sơ:"
 
 msgid "Auto-detect language profile"
 msgstr "Tự động phát hiện hồ sơ ngôn ngữ"
@@ -293,7 +296,7 @@ msgid "Installed voice packages"
 msgstr "Gói giọng đã cài đặt"
 
 msgid "Install at least one language voice package to use auto-detect."
-msgstr "Hãy cài đặt ít nhất một gói giọng ngôn ngữ để dùng tự động phát hiện."
+msgstr "Cài đặt ít nhất một gói giọng ngôn ngữ để sử dụng tự động phát hiện."
 
 msgid "Installed {package}."
 msgstr "Đã cài đặt {package}."
@@ -426,6 +429,9 @@ msgstr "Tiếng Santali"
 
 msgid "Select Synthesizer dialog class was not found."
 msgstr "Không tìm thấy lớp hộp thoại Chọn bộ đọc."
+
+msgid "Select at least one language profile to use auto-detect."
+msgstr "Chọn ít nhất một hồ sơ ngôn ngữ để sử dụng tự động phát hiện."
 
 msgid "Serbian"
 msgstr "Tiếng Serbia"

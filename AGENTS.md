@@ -181,9 +181,10 @@ Automatic language detection deliberately has its own profile system and must no
   - `autoLanguageDetection` — master enable switch.
   - `autoLanguagePreferred` — preferred language used when text is ambiguous.
   - `autoLanguageCandidates` — comma-separated compatibility list of selected languages.
-  - `autoLanguageProfiles` — JSON object keyed by installed language code. Each profile stores `enabled`, `voice`, `rate`, `rateBoost`, `pitch`, and `volume`.
-- When auto-detect is **off**, the synth must use NVDA's normal Speech Settings values for voice, rate, rate boost, pitch, and volume.
-- When auto-detect is **on**, detected sentences must use the selected language profile values. If only one language profile is enabled, use that profile for every sentence; do not fall back to normal Speech Settings values merely because there is only one candidate. Do not copy these profile values into `config.conf["speech"][synthName]`.
+  - `autoLanguageProfiles` — JSON object keyed by installed language code. Each profile stores `enabled`, `voice`, `rate`, `rateBoost`, `pitch`, `volume`, `capPitchChange`, `sayCapForCapitals`, `beepForCapitals`, and `useSpellingFunctionality`.
+- When auto-detect is **off**, the synth must use NVDA's normal Speech Settings values for voice, rate, rate boost, pitch, volume, capital-letter handling, and spelling behavior.
+- When auto-detect is **on**, detected sentences must use the selected language profile values. If only one language profile is enabled, use that profile for every sentence; do not fall back to normal Speech Settings values merely because there is only one candidate. Do not persistently copy these profile values into `config.conf["speech"][synthName]`.
+- Keep NVDA-wide Speech Settings in NVDA Speech Settings. This includes automatic language/dialect switching, language change reporting, punctuation and symbol level, trusted voice language, Unicode normalization, Unicode Consortium data (including emoji), normalized-character reporting, extra symbol dictionaries, delayed character descriptions, and cycle speech mode choices.
 - Auto-detect should use the bundled CLD2 detector (`synthDrivers/googleTtsForNvda/language_detector.py` and `synthDrivers/googleTtsForNvda/cld2/`) as the primary detector. `language_detector.py` must select `cld2_x86.dll` for 32-bit NVDA/Python and `cld2_x64.dll` for 64-bit NVDA/Python, with `cld2.dll` only as a compatibility fallback.
 - Do not use unreliable CLD2 results as authoritative for unclear text. If CLD2 is unavailable or uncertain, the synth may use conservative local language signals and then the enabled preferred language; it must not fall back to normal Speech Settings values while auto-detect is on.
 - Explicit `LangChangeCommand` values from NVDA or the focused app remain authoritative and should not be overridden by auto-detect.
@@ -194,8 +195,13 @@ Automatic language detection deliberately has its own profile system and must no
 - Profile voices must be installed and must match the selected profile language. If a saved profile references a missing or mismatched voice, fall back to an installed voice for that language.
 - The Google TTS settings panel must keep the language profile list accessible: use a normal language choice control, a clear checkbox for "Use this language in auto-detect", and ordinary labeled controls for profile values. Do not use a multi-column table for these profile controls.
 - Status/help lines in Speech Settings and the Google TTS settings category must be reachable by Tab and read by NVDA. Use focusable read-only controls for these status lines instead of plain `wx.StaticText`.
+- The Google TTS settings category status line for automatic language profiles must describe the current state, not only the enabled behavior:
+  - no installed language voice packages: prompt the user to install at least one language voice package;
+  - automatic language profiles off: explain that Google TTS is using NVDA's normal Speech Settings values;
+  - automatic language profiles on with no selected profiles: prompt the user to select at least one language profile;
+  - automatic language profiles on with selected profiles: explain that selected installed language profiles are used, and one selected profile applies to every sentence.
 - The preferred auto-detect language choice must only list languages whose profile is enabled.
-- Rate, pitch, and volume profile controls should use sliders, matching NVDA's Speech Settings interaction style.
+- Rate, pitch, and volume profile controls should use sliders, matching NVDA's Speech Settings interaction style. Capital pitch should use NVDA's numeric edit/spin control (`nvdaControls.SelectOnFocusSpinCtrl`) to match Speech Settings.
 - Use NVDA's own translated setting names for voice/rate/rate boost/pitch/volume labels where possible instead of inventing add-on-specific translated terms.
 - The main checkbox label should describe the broader behavior as automatic language profiles, not only switching between voices, because one enabled profile is valid and applies to every sentence.
 - When auto-detect is enabled, `SynthDriver.supportedSettings` should hide normal `VoiceSetting`, `RateSetting`, `RateBoostSetting`, `PitchSetting`, and `VolumeSetting`, and instead expose a read-only notice that directs the user to the Google TTS For NVDA settings category. Refresh the settings ring after saving the auto-detect setting.
@@ -375,6 +381,7 @@ When modifying `voiceManager.py` or any UI:
 - Generated translation files are `googleTtsForNvda/locale/<language>/LC_MESSAGES/nvda.mo` and `googleTtsForNvda/locale/<language>/manifest.ini`.
 - Localized documentation lives at `googleTtsForNvda/doc/<language>/readme.html`.
 - Translation docs must explain what each translation part affects: UI strings for NVDA dialogs/messages/settings, `.mo` for runtime loading, localized `manifest.ini` for NVDA add-on metadata, localized `readme.html` for user help, `languageSort.json` for visible Voice Manager language ordering, and `nvda.pot` as the source template.
+- Keep localized `readme.html` terminology aligned with the locale's `nvda.po` UI translations and, where a setting label comes from NVDA itself, with NVDA's own locale translation.
 - Translators may use Poedit to create or edit `nvda.po` from `nvda.pot`; when Poedit saves and keeps `.po` and `.mo` synchronized, `build_i18n.py` is used to validate the translation.
 - If another translation tool edits `.po` but does not generate or synchronize `.mo`, use `build_i18n.py` to build the generated translation files and localized manifest.
 - Running `python build_i18n.py` with no arguments must open the numbered interactive menu by default.

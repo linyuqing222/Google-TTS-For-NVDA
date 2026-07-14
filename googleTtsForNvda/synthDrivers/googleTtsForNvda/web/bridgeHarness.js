@@ -652,7 +652,11 @@
 		resetAudioQueue();
 		const engine = getTtsEngine();
 		if (engine && typeof engine.onStop === "function") {
-			await engine.onStop();
+			try {
+				await engine.onStop();
+			} catch (error) {
+				console.debug("Ignored engine stop failure during cancellation:", error);
+			}
 		}
 	}
 

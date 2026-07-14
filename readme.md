@@ -88,16 +88,25 @@ In the Google TTS For NVDA settings category:
 1. Turn on **Use automatic language profiles**.
 2. Choose an **Auto-detect language profile**.
 3. Check **Use this language in auto-detect** for each language you want the detector to consider. Language profiles are off until you check them.
-4. For each enabled language, choose its voice and adjust rate, rate boost, pitch, and volume.
+4. For each enabled language, choose its voice and adjust rate, rate boost, pitch, volume, capital-letter pitch, cap announcement, capital beep, and spelling behavior.
 5. Choose the **Preferred auto-detect language** from the enabled languages. This language is used when a sentence is unclear or does not contain enough language clues.
 
-Only enabled languages appear in the preferred language list. Rate, pitch, and volume use sliders like NVDA's Speech settings. The labels for voice, rate, rate boost, pitch, and volume follow NVDA's own translated setting names.
+Only enabled languages appear in the preferred language list. Rate, pitch, and volume use sliders like NVDA's Speech settings. Capital-letter pitch uses the same numeric edit/spin control as NVDA's Speech Settings. The labels for voice, rate, rate boost, pitch, volume, and capital/spelling options follow NVDA's own translated setting names where possible.
+
+The Google TTS settings category includes a focusable status line for automatic language profiles. It changes with the current state:
+
+* If no language voice package is installed, it asks you to install at least one language voice package.
+* If automatic language profiles are off, it explains that Google TTS is using NVDA's normal Speech Settings values for voice, rate, pitch, volume, capitals, and spelling.
+* If automatic language profiles are on but no language profile is selected, it asks you to select at least one language profile.
+* If one or more profiles are selected, it explains that the selected installed language profiles are used; with one selected profile, that profile is used for every sentence.
+
+Speech settings that are global to NVDA, such as punctuation and symbol level, automatic dialect switching, language change reporting, trusted voice language, Unicode normalization, Unicode Consortium data (including emoji), extra symbol dictionaries, delayed character descriptions, and cycle speech mode choices remain in NVDA's Speech settings.
 
 Automatic language detection marks the language before NVDA processes text, so NVDA's symbol pronunciation and speech dictionary processing stay in the normal speech pipeline for the selected language context.
 
 When automatic language detection is off, NVDA voice dictionaries work normally for the currently selected Google TTS voice. When automatic language detection is on, the add-on temporarily uses the voice dictionary for each enabled language profile's selected voice while NVDA processes that segment. NVDA's default and temporary dictionaries still follow NVDA's normal behavior.
 
-While automatic language detection is enabled, NVDA's Speech settings will not offer the normal voice, rate, rate boost, pitch, and volume controls for this synthesizer. Instead, it shows a focusable notice telling you to configure these values from **NVDA Settings -> Google TTS For NVDA**. Status messages in the Google TTS For NVDA settings category are also reachable with Tab so screen readers can announce them. Turn automatic language detection off to use the normal NVDA Speech settings again.
+While automatic language detection is enabled, NVDA's Speech settings will not offer the normal voice, rate, rate boost, pitch, and volume controls for this synthesizer. Instead, it shows a focusable notice telling you to configure these values from **NVDA Settings -> Google TTS For NVDA**. Google TTS also uses each enabled profile's capital-letter and spelling options while automatic language profiles are on; the normal Speech settings values remain available again when automatic language profiles are turned off. Status messages in the Google TTS For NVDA settings category are also reachable with Tab so screen readers can announce them.
 
 ---
 

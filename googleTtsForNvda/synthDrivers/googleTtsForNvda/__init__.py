@@ -74,11 +74,76 @@ _URL_TOKEN_SEGMENT_MAX_CHARS = 220
 _FORCED_SEGMENT_MIN_CHARS = 32
 _FORCED_SEGMENT_FORWARD_LOOKAHEAD = 24
 _FORCED_SEGMENT_HARD_MAX_CHARS = 256
-# Phrase-level break characters. These must include non-ASCII punctuation:
-# scripts such as Arabic, Urdu and Farsi use their own comma/semicolon
-# (U+060C "،", U+061B "؛") and never the ASCII ones, so an ASCII-only set finds
-# no phrase break at all in Arabic prose. Also covers CJK and Armenian/Ethiopic.
-_SOFT_BREAK_CHARS = ",，、;；:：—–\u060C\u061B\u3001\uFF0C\uFF1B\u055D\u1363"
+# Phrase-level punctuation used by scripts that do not rely on ASCII comma/semicolon.
+_SOFT_BREAK_CHARS = (
+	",;:\uFF0C\u3001\uFF1B\uFF1A\u2014\u2013"
+	"\u0387"
+	"\u060C\u061B"
+	"\u055D"
+	"\u1363\u1364\u1365\u1366"
+	"\u17D6"
+	"\uA9C8"
+)
+_ASCII_SENTENCE_TERMINATORS = ".!?"
+_SENTENCE_TRAILING_CLOSERS = "'\")]}”’」』）》〉»\u2018-\u201F\u3009\u300B\u300D\u300F\u3011\uFF09\uFF3D\uFF5D"
+_EXPLICIT_SENTENCE_TERMINATORS = set(
+	"。！？；｡।॥\u061F\u06D4\u055C\u055E\u0589\u0DF4\u0E5A\u0E5B\u1362\u1367\u1368\u17D4\u17D5\u1C7E\u1C7F\uA9C9"
+)
+_UNICODE_SENTENCE_TERMINATOR_NAME_PARTS = (
+	"FULL STOP",
+	"QUESTION MARK",
+	"EXCLAMATION MARK",
+	"SEMICOLON",
+	"SHAD",
+	"DANDA",
+	"DOUBLE DANDA",
+	"TRIPLE DANDA",
+	"KUNDDALIYA",
+	"ANGKHANKHU",
+	"KHOMUT",
+	"PADA LUNGSI",
+	"CARIK SIKI",
+	"CARIK PAREREN",
+	"PAMENENG",
+	"END OF PARAGRAPH",
+	"END OF SECTION",
+	"END OF TEXT",
+	"LITTLE SECTION",
+	"SIGN SECTION",
+	"PUNCTUATION MUCAAD",
+	"PUNCTUATION DOUBLE MUCAAD",
+	"PUNCTUATION TSHOOK",
+	"AHANG KHUDAM",
+)
+_UNICODE_SOFT_BREAK_NAME_PARTS = (
+	"COMMA",
+	"SEMICOLON",
+	"COLON",
+	"PHRASE",
+	"CLAUSE",
+	"PADA LINGSA",
+	"PUNCTUATION CHEIKHAN",
+	"PUNCTUATION BINDU",
+)
+_UNICODE_INITIAL_PUNCTUATION_NAME_PARTS = (
+	"INVERTED QUESTION MARK",
+	"INVERTED EXCLAMATION MARK",
+	"INITIAL QUESTION MARK",
+	"INITIAL EXCLAMATION MARK",
+)
+_NON_BREAKING_SOFT_PUNCTUATION = set(
+	"'\"`´’ʼʻʹʺ_-#@&/\\"
+	"\u00B7\u05F3\u05F4\u2010\u2011\u2027\u30FB\uFF65"
+)
+_NON_BREAKING_SOFT_PUNCTUATION_NAME_PARTS = (
+	"APOSTROPHE",
+	"QUOTATION MARK",
+	"QUOTE",
+	"HYPHEN",
+	"SOLIDUS",
+	"SLASH",
+	"MIDDLE DOT",
+)
 _VOICE_WARMUP_TEXT = "a"
 _AUTO_LANGUAGE_NOTICE_ID = "notice"
 _AUTO_DETECT_MIN_SCORE = 2
@@ -109,11 +174,48 @@ _COMMON_ABBREVIATIONS = {
 	"ул", "им", "обл", "рис", "см", "стр", "тд", "тп", "пр", "руб", "коп", "тыс", "млн", "млрд", "др", "г", "гор", "пер", "пл", "просп",
 }
 
-_SENTENCE_TERMINATOR_RE = re.compile(
-	r"([。！？；｡।॥؟։።፧፨]+|[.!?;]+)"
-	r"(['\"\)\]\}”’」』）》〉»\u2018-\u201F\u3009\u300B\u300D\u300F\u3011\uFF09\uFF3D\uFF5D]*)"
-	r"(\s*)"
-)
+
+def _unicode_name(character: str) -> str:
+	return unicodedata.name(character, "")
+
+
+def _is_sentence_terminator_character(character: str) -> bool:
+	if character in _ASCII_SENTENCE_TERMINATORS or character in _EXPLICIT_SENTENCE_TERMINATORS:
+		return True
+	if not unicodedata.category(character).startswith("P"):
+		return False
+	name = _unicode_name(character)
+	if any(part in name for part in _UNICODE_INITIAL_PUNCTUATION_NAME_PARTS):
+		return False
+	return any(part in name for part in _UNICODE_SENTENCE_TERMINATOR_NAME_PARTS)
+
+
+def _is_soft_break_character(character: str) -> bool:
+	if character in _SOFT_BREAK_CHARS:
+		return True
+	if character in _ASCII_SENTENCE_TERMINATORS:
+		return False
+	if character not in _ASCII_SENTENCE_TERMINATORS and _is_sentence_terminator_character(character):
+		return True
+	category = unicodedata.category(character)
+	if character in _NON_BREAKING_SOFT_PUNCTUATION:
+		return False
+	name = _unicode_name(character)
+	if any(part in name for part in _UNICODE_INITIAL_PUNCTUATION_NAME_PARTS):
+		return False
+	if any(part in name for part in _NON_BREAKING_SOFT_PUNCTUATION_NAME_PARTS):
+		return False
+	if category == "Pd":
+		return True
+	if category == "Po":
+		return True
+	return any(part in name for part in _UNICODE_SOFT_BREAK_NAME_PARTS)
+
+
+def _is_sentence_trailing_closer(character: str) -> bool:
+	return character in _SENTENCE_TRAILING_CLOSERS or "\u2018" <= character <= "\u201F"
+
+
 _LANGUAGE_WORD_RE = re.compile(r"[^\W\d_]+(?:['’_-][^\W\d_]+)?", re.UNICODE)
 _VIETNAMESE_LETTERS = set(
 	"ăâđêôơư"
@@ -466,6 +568,10 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			voices[speaker.id] = VoiceInfo(speaker.id, label, speaker.language)
 		return voices
 
+	def _get_availableNotices(self) -> "OrderedDict[str, VoiceInfo]":
+		message = self._auto_language_notice_message()
+		return OrderedDict({_AUTO_LANGUAGE_NOTICE_ID: VoiceInfo(_AUTO_LANGUAGE_NOTICE_ID, message)})
+
 	def _initial_voice(self) -> str:
 		try:
 			configured = config.conf["speech"][self.name]["voice"]
@@ -494,6 +600,9 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		firstTextSegment = True
 		activeVoice = voice
 		activeLanguage: str | None = None
+		activeRateCommand: RateCommand | None = None
+		activePitchCommand: PitchCommand | None = None
+		activeVolumeCommand: VolumeCommand | None = None
 
 		def flush_text() -> Iterator[tuple[str, Any]]:
 			nonlocal firstTextSegment, textCharCount, pendingIndexes
@@ -541,10 +650,13 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 					pitch,
 					volume,
 				)
+				groupRate = self._apply_prosody_command(groupProfile["rate"], activeRateCommand)
+				groupPitch = self._apply_prosody_command(groupProfile["pitch"], activePitchCommand)
+				groupVolume = self._apply_prosody_command(groupProfile["volume"], activeVolumeCommand)
 				options = self._speech_options(
-					groupProfile["rate"],
-					groupProfile["pitch"],
-					groupProfile["volume"],
+					groupRate,
+					groupPitch,
+					groupVolume,
 					groupProfile["voice"],
 					groupProfile["rateBoost"],
 				)
@@ -585,18 +697,41 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 				yield from flush_text()
 				if cancelEvent.is_set():
 					return
-				rate = int(item.newValue)
+				activeRateCommand = None if self._is_prosody_reset_command(item) else item
 			elif itemType is PitchCommand:
 				yield from flush_text()
 				if cancelEvent.is_set():
 					return
-				pitch = int(item.newValue)
+				activePitchCommand = None if self._is_prosody_reset_command(item) else item
 			elif itemType is VolumeCommand:
 				yield from flush_text()
 				if cancelEvent.is_set():
 					return
-				volume = int(item.newValue)
+				activeVolumeCommand = None if self._is_prosody_reset_command(item) else item
 		yield from flush_text()
+
+	def _apply_prosody_command(self, baseValue: Any, command: Any | None) -> int:
+		try:
+			value = int(baseValue)
+		except (TypeError, ValueError):
+			value = 50
+		if command is not None:
+			try:
+				offset = int(getattr(command, "_offset", 0))
+				multiplier = float(getattr(command, "_multiplier", 1))
+				if offset:
+					value += offset
+				elif multiplier != 1:
+					value = int(value * multiplier)
+			except (TypeError, ValueError):
+				log.debug("Could not apply Google TTS prosody command.", exc_info=True)
+		return max(0, min(100, value))
+
+	def _is_prosody_reset_command(self, command: Any) -> bool:
+		try:
+			return int(getattr(command, "_offset", 0)) == 0 and float(getattr(command, "_multiplier", 1)) == 1
+		except (TypeError, ValueError):
+			return False
 
 	def _iter_indexed_text_segments(
 		self,
@@ -659,23 +794,38 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 
 	def _find_sentence_splits(self, text: str) -> list[int]:
 		splits: list[int] = []
-		for m in _SENTENCE_TERMINATOR_RE.finditer(text):
-			terminator = m.group(1)
-			trailing_ws = m.group(3)
-			end = m.end()
+		index = 0
+		while index < len(text):
+			terminatorStart = index
+			terminator = text[index]
+			if not _is_sentence_terminator_character(terminator):
+				index += 1
+				continue
+			index += 1
+			while index < len(text) and _is_sentence_terminator_character(text[index]):
+				index += 1
+			while index < len(text) and _is_sentence_trailing_closer(text[index]):
+				index += 1
+			whitespaceStart = index
+			while index < len(text) and text[index].isspace():
+				index += 1
+			trailing_ws = text[whitespaceStart:index]
+			end = index
 			if end == len(text):
 				continue
-			if terminator[0] in "。！？；｡।॥؟։።፧፨":
+			if terminator in _ASCII_SENTENCE_TERMINATORS + ";":
+				if not trailing_ws:
+					continue
+			else:
 				splits.append(end)
 				continue
 			if not trailing_ws:
 				continue
-			if terminator[0] == ".":
-				start = m.start()
-				w_start = start - 1
+			if terminator == ".":
+				w_start = terminatorStart - 1
 				while w_start >= 0 and text[w_start].isalnum():
 					w_start -= 1
-				word_before = text[w_start + 1 : start].lower()
+				word_before = text[w_start + 1 : terminatorStart].lower()
 				if word_before.isdigit():
 					continue
 				if len(word_before) == 1 and word_before.isalpha():
@@ -737,17 +887,6 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		while len(remaining) > _SOFT_PHRASE_SEGMENT_MAX_CHARS:
 			cut = self._find_soft_phrase_cut(remaining, first_segment)
 			if cut is None:
-				# No phrase punctuation anywhere in range. Previously we broke out
-				# here and yielded the whole remainder, which can hand the engine a
-				# very long utterance (anything up to _SEAMLESS_UTTERANCE_MAX_CHARS)
-				# in a single request. The engine fails silently on over-long input -
-				# it returns no audio at all and the utterance is simply never
-				# spoken. This is easy to hit in scripts that do not use ASCII
-				# punctuation: an ~886 character unpointed Arabic sentence with no
-				# full stop reproduces it reliably.
-				#
-				# Fall back to a whitespace (word boundary) cut so a segment is
-				# always produced and never exceeds the hard maximum.
 				cut = self._find_whitespace_cut(
 					remaining,
 					_SOFT_PHRASE_SEGMENT_MIN_CHARS,
@@ -755,16 +894,12 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 					_SOFT_PHRASE_SEGMENT_LOOKAHEAD,
 				)
 			if cut is None:
-				# Not even a space (e.g. one enormous unbroken token). Cut on the
-				# hard maximum rather than emitting an oversized segment.
 				cut = min(len(remaining), _FORCED_SEGMENT_HARD_MAX_CHARS)
 			segment = remaining[:cut].strip()
 			if segment:
 				yield segment
 			nextRemaining = remaining[cut:].strip()
 			if nextRemaining == remaining:
-				# Guarantee forward progress; never loop forever on a pathological
-				# input.
 				yield nextRemaining
 				return
 			remaining = nextRemaining
@@ -834,7 +969,6 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		return best
 
 	def _find_soft_phrase_cut(self, text: str, fastFirstSegment: bool = False) -> int | None:
-		soft_break_chars = _SOFT_BREAK_CHARS
 		if fastFirstSegment:
 			min_len = min(len(text), _FAST_SOFT_PHRASE_SEGMENT_MIN_CHARS)
 			max_len = min(len(text), _FAST_SOFT_PHRASE_SEGMENT_MAX_CHARS)
@@ -844,11 +978,11 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			max_len = min(len(text), _SOFT_PHRASE_SEGMENT_MAX_CHARS)
 			lookahead = _SOFT_PHRASE_SEGMENT_LOOKAHEAD
 		for index in range(max_len, min_len - 1, -1):
-			if text[index - 1] in soft_break_chars:
+			if _is_soft_break_character(text[index - 1]):
 				return index
 		lookahead_end = min(len(text), max_len + lookahead)
 		for index in range(max_len, lookahead_end):
-			if text[index] in soft_break_chars:
+			if _is_soft_break_character(text[index]):
 				return index + 1
 		return None
 
