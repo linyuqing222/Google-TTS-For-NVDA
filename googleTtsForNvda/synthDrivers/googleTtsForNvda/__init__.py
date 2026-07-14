@@ -78,7 +78,7 @@ _FORCED_SEGMENT_HARD_MAX_CHARS = 256
 # scripts such as Arabic, Urdu and Farsi use their own comma/semicolon
 # (U+060C "،", U+061B "؛") and never the ASCII ones, so an ASCII-only set finds
 # no phrase break at all in Arabic prose. Also covers CJK and Armenian/Ethiopic.
-_SOFT_BREAK_CHARS = ",，、;；\u060C\u061B\u3001\uFF0C\uFF1B\u055D\u1363"
+_SOFT_BREAK_CHARS = ",，、;；:：—–\u060C\u061B\u3001\uFF0C\uFF1B\u055D\u1363"
 _VOICE_WARMUP_TEXT = "a"
 _AUTO_LANGUAGE_NOTICE_ID = "notice"
 _AUTO_DETECT_MIN_SCORE = 2
@@ -785,11 +785,15 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 					_UI_SUMMARY_SEGMENT_LOOKAHEAD,
 				)
 			if cut is None:
-				break
+				cut = min(len(remaining), _FORCED_SEGMENT_HARD_MAX_CHARS)
 			segment = remaining[:cut].strip()
 			if segment:
 				yield segment
-			remaining = remaining[cut:].strip()
+			nextRemaining = remaining[cut:].strip()
+			if nextRemaining == remaining:
+				yield nextRemaining
+				return
+			remaining = nextRemaining
 			first_segment = False
 		if remaining:
 			yield remaining
