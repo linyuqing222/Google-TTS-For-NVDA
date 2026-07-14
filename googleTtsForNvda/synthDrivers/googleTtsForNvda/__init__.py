@@ -273,6 +273,18 @@ def _is_sentence_trailing_closer(character: str) -> bool:
 	return character in _SENTENCE_TRAILING_CLOSERS or "\u2018" <= character <= "\u201F"
 
 
+def _is_no_space_script_character(character: str) -> bool:
+	codepoint = ord(character)
+	category = unicodedata.category(character)
+	if not (category.startswith("L") or category.startswith("M")):
+		return False
+	return any(
+		start <= codepoint <= end
+		for ranges, _limit in _NO_SPACE_SCRIPT_PROFILES
+		for start, end in ranges
+	)
+
+
 _LANGUAGE_WORD_RE = re.compile(r"[^\W\d_]+(?:['’_-][^\W\d_]+)?", re.UNICODE)
 _VIETNAMESE_LETTERS = set(
 	"ăâđêôơư"
@@ -844,10 +856,23 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 	def _spoken_bridge_segments(self, segments: list[str]) -> list[str]:
 		spokenSegments: list[str] = []
 		for segment in segments:
-			if spokenSegments and spokenSegments[-1] and segment and spokenSegments[-1][-1].isalnum() and segment[0].isalnum():
+			if (
+				spokenSegments
+				and spokenSegments[-1]
+				and segment
+				and self._needs_spoken_segment_space(spokenSegments[-1][-1], segment[0])
+			):
 				spokenSegments[-1] += " "
 			spokenSegments.append(segment)
 		return spokenSegments
+
+	def _needs_spoken_segment_space(self, previousCharacter: str, nextCharacter: str) -> bool:
+		if not previousCharacter.isalnum() or not nextCharacter.isalnum():
+			return False
+		return not (
+			_is_no_space_script_character(previousCharacter)
+			or _is_no_space_script_character(nextCharacter)
+		)
 
 	def _find_sentence_splits(self, text: str) -> list[int]:
 		splits: list[int] = []
@@ -1053,7 +1078,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		for index in range(max_len, lookahead_end):
 			if text[index].isspace():
 				return index
-		return None
+		return self._find_no_space_script_cut(text, max_len)
 
 	def _find_forced_latency_cut(self, text: str, max_len: int) -> int:
 		if len(text) <= max_len:
@@ -1106,29 +1131,25 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		if not sample:
 			return None
 		signalChars = 0
-		bestCount = 0
-		bestLimit: int | None = None
-		for ranges, limit in _NO_SPACE_SCRIPT_PROFILES:
-			count = 0
-			for character in sample:
-				category = unicodedata.category(character)
-				if category.startswith("L") or category.startswith("M"):
-					if any(start <= ord(character) <= end for start, end in ranges):
-						count += 1
-			if count > bestCount:
-				bestCount = count
-				bestLimit = limit
+		noSpaceChars = 0
+		segmentLimit: int | None = None
 		for character in sample:
 			category = unicodedata.category(character)
 			if category.startswith("L") or category.startswith("M"):
 				signalChars += 1
+				codepoint = ord(character)
+				for ranges, limit in _NO_SPACE_SCRIPT_PROFILES:
+					if any(start <= codepoint <= end for start, end in ranges):
+						noSpaceChars += 1
+						segmentLimit = limit if segmentLimit is None else min(segmentLimit, limit)
+						break
 		if not signalChars:
 			return None
-		if bestCount < _NO_SPACE_SCRIPT_SIGNAL_MIN_CHARS:
+		if noSpaceChars < _NO_SPACE_SCRIPT_SIGNAL_MIN_CHARS:
 			return None
-		if bestCount / signalChars < _NO_SPACE_SCRIPT_SIGNAL_MIN_RATIO:
+		if noSpaceChars / signalChars < _NO_SPACE_SCRIPT_SIGNAL_MIN_RATIO:
 			return None
-		return bestLimit
+		return segmentLimit
 
 	def _extend_cut_over_combining_marks(self, text: str, cut: int, max_cut: int) -> int:
 		while cut < max_cut and unicodedata.category(text[cut]).startswith("M"):
@@ -1151,7 +1172,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 
 	def _should_pause_after_segment(self, segment: str) -> bool:
 		stripped = segment.rstrip()
-		while stripped and stripped[-1] in "'\")]}”’」』）》〉»":
+		while stripped and _is_sentence_trailing_closer(stripped[-1]):
 			stripped = stripped[:-1].rstrip()
 		return bool(stripped) and _is_sentence_terminator_character(stripped[-1])
 
