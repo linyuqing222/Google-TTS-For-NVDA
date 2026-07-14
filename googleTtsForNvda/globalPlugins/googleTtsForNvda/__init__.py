@@ -770,7 +770,10 @@ def _auto_profile_character_settings_for_language(synth: Any, language: str | No
 	}
 
 
-def _auto_profile_character_settings_for_text(locale: str | None, text: str | None) -> dict[str, Any] | None:
+def _auto_profile_character_context_for_text(
+	locale: str | None,
+	text: str | None,
+) -> tuple[dict[str, Any], str | None] | None:
 	if not isinstance(text, str):
 		return None
 	try:
@@ -778,7 +781,11 @@ def _auto_profile_character_settings_for_text(locale: str | None, text: str | No
 		if getattr(synth, "name", "") != SYNTH_NAME or not synth._auto_language_detection_enabled():
 			return None
 		targetLanguage = _auto_language_for_process_text(synth, locale, text)
-		return _auto_profile_character_settings_for_language(synth, targetLanguage)
+		settings = _auto_profile_character_settings_for_language(synth, targetLanguage)
+		if settings is None:
+			return None
+		effectiveLocale = _nvda_locale_for_language(targetLanguage) or _nvda_locale_for_language(locale) or locale
+		return settings, effectiveLocale
 	except Exception:
 		log.debug("Could not resolve Google TTS auto-language character settings.", exc_info=True)
 		return None
@@ -935,10 +942,11 @@ def _patch_auto_language_voice_dictionary() -> None:
 		locale: str | None = None,
 		useCharacterDescriptions: bool = False,
 	) -> Any:
-		settings = _auto_profile_character_settings_for_text(locale, text)
-		if not settings:
+		context = _auto_profile_character_context_for_text(locale, text)
+		if not context:
 			yield from originalGetSpellingSpeech(text, locale=locale, useCharacterDescriptions=useCharacterDescriptions)
 			return
+		settings, effectiveLocale = context
 		with _speechConfigOverlayLock:
 			try:
 				synthConfig = config.conf["speech"][SYNTH_NAME]
@@ -957,7 +965,7 @@ def _patch_auto_language_voice_dictionary() -> None:
 			try:
 				yield from originalGetSpellingSpeech(
 					text,
-					locale=locale,
+					locale=effectiveLocale,
 					useCharacterDescriptions=useCharacterDescriptions,
 				)
 			finally:
