@@ -1,6 +1,6 @@
 # Google TTS For NVDA — Agent Engineering Guide
 
-You are working on **Google TTS For NVDA**, an NVDA screen-reader synthesizer add-on. Act as **Codex, a software engineering agent maintaining a production accessibility add-on**, not as an end user. Your job is to make safe, minimal, testable changes that preserve NVDA responsiveness, accessibility, packaging correctness, and the Microsoft Edge / Google Chrome WASM TTS bridge.
+You are working on **Google TTS For NVDA**, an NVDA screen-reader synthesizer add-on. Act as **Codex, a software engineering agent maintaining a production accessibility add-on**, not as an end user. Your job is to make safe, minimal, testable changes that preserve NVDA responsiveness, accessibility, packaging correctness, and the supported Chromium browser WASM TTS bridge.
 
 Product vision: this add-on grew from the dream of making Google TTS usable as a practical, everyday NVDA synthesizer on Windows computers. Preserve that user-facing goal when changing code, documentation, packaging, and translation workflows.
 
@@ -12,7 +12,7 @@ This file is the operating manual for coding agents. Follow it before making or 
 
 When writing documentation, release notes, commit messages, or user-facing summaries for version 0.3:
 
-- Describe voice package startup work as an improvement, not as a complete fix. The add-on prepares the currently selected voice package sooner, but browser runtime and WASM startup still affect timing.
+- Describe voice package startup work as an improvement, not as a complete fix. The add-on prepares the currently selected voice package sooner, but Chromium browser runtime and WASM startup still affect timing.
 - Describe audio balance, clipping, harshness, or distortion work as an improvement, not as a complete fix. The processing is generic across voice packages and languages; Vietnamese may be mentioned only as a testing example, not as the only affected language.
 - Describe long-text and UI-text latency/segmentation work as an improvement, not as a complete fix. Background segmentation can make speech begin sooner and sound more natural, but cache misses and engine behavior can still affect long utterances.
 - SeaNet high-rate handling can be described as successful for quality preservation, with the explicit trade-off that high-speed SeaNet speech uses more CPU because generated audio is processed after synthesis.
@@ -70,7 +70,7 @@ Workspace: `C:\Users\hungv\Documents\Codex\Google-TTS-For-NVDA`
 **Google TTS For NVDA** exposes Google's WASM TTS voices to NVDA through:
 
 - an NVDA synth driver,
-- a managed headless Microsoft Edge or Google Chrome process,
+- a managed headless supported Chromium browser process, such as Google Chrome, Microsoft Edge, or Brave,
 - a browser DevTools Protocol (CDP) WebSocket bridge,
 - a browser-side JavaScript harness that captures PCM audio from the WASM engine,
 - runtime-downloaded `.zvoice` voice packages stored in the user's NVDA config directory.
@@ -87,7 +87,7 @@ NVDA process
 │  │                    CLD2-backed language detection with x86/x64 DLL selection
 │  ├─ voice_store.py     Download, copy, verify, remove voice packages
 │  ├─ web/
-│  │  ├─ index.html      Loaded in the headless browser runtime
+│  │  ├─ index.html      Loaded in the headless Chromium browser runtime
 │  │  └─ bridgeHarness.js
 │  │     Shims chrome.* APIs, calls WASM engine, captures AudioWorklet PCM,
 │  │     sends base64 chunks through the CDP binding
@@ -106,7 +106,7 @@ NVDA process
 
 1. NVDA calls `SynthDriver.speak()` with a speech sequence.
 2. The driver segments text, builds options for voice/rate/pitch/volume, and queues synthesis on a background thread.
-3. `ChromeTtsBridge.speak()` verifies the required voice package is installed, ensures the browser runtime and CDP are connected, then evaluates `window.googleTtsForNvdaSpeak(...)` via `Runtime.evaluate`.
+3. `ChromeTtsBridge.speak()` verifies the required voice package is installed, ensures the Chromium browser runtime and CDP are connected, then evaluates `window.googleTtsForNvdaSpeak(...)` via `Runtime.evaluate`.
 4. `bridgeHarness.js` calls the Google WASM TTS engine through `window.Uh.onSpeak`, intercepts `AudioWorkletNode` buffers, converts float32 audio to int16 PCM, and sends base64 audio chunks through the `googleTtsForNvdaBridge` CDP binding.
 5. Python receives `Runtime.bindingCalled`, decodes PCM, and feeds it to `nvwave.WavePlayer`.
 
@@ -149,13 +149,14 @@ If no voice packages are installed when the synth starts:
 
 ### Browser-runtime availability limits
 
-This add-on depends on a supported Microsoft Edge or Google Chrome runtime running in the current Windows user session.
+This add-on depends on a supported Chromium browser runtime, such as Google Chrome, Microsoft Edge, or Brave, running in the current Windows user session.
 
-- Do not document or imply that Google TTS For NVDA is suitable for environments where the browser runtime is unavailable or cannot start.
+- Do not document or imply that Google TTS For NVDA is suitable for environments where the Chromium browser runtime is unavailable or cannot start.
 - User-facing documentation should warn that the add-on should not be relied on at the Windows sign-in screen, secure desktop contexts, Windows PE, recovery environments, or other minimal Windows sessions.
-- User-facing documentation should include an Edge-runtime silence troubleshooting note: if Microsoft Edge is selected and speech stays silent even though Edge is installed, direct users to install or repair Microsoft Edge WebView2 Runtime using Microsoft's Evergreen Bootstrapper link (`https://go.microsoft.com/fwlink/p/?LinkId=2124703`), then restart NVDA. Also include Microsoft's WebView2 page (`https://developer.microsoft.com/microsoft-edge/webview2`) for offline installers and fixed-version runtime packages.
-- Microsoft Edge WebView2 Runtime is required only when Microsoft Edge is the selected/effective browser runtime. Google Chrome must not depend on WebView2; Chrome availability should be checked only through the Chrome browser executable/path. Status messages, fallback logic, prompts, and documentation must not imply that Chrome needs Edge WebView2.
-- Keep fallback/error wording clear: if no supported browser runtime is available, the synth cannot provide speech through the Google WASM TTS engine.
+- User-facing documentation should include an Edge-runtime silence troubleshooting note: if Microsoft Edge is selected as the Chromium browser runtime and speech stays silent even though Edge is installed, direct users to install or repair Microsoft Edge WebView2 Runtime using Microsoft's Evergreen Bootstrapper link (`https://go.microsoft.com/fwlink/p/?LinkId=2124703`), then restart NVDA. Also include Microsoft's WebView2 page (`https://developer.microsoft.com/microsoft-edge/webview2`) for offline installers and fixed-version runtime packages.
+- If opening a WebView2/download URL fails, the fallback dialog must show the URL in a focusable read-only field with a real label association, bind the same full-value focus announcement used by Google TTS status fields, and include a Copy link button.
+- Microsoft Edge WebView2 Runtime is required only when Microsoft Edge is the selected/effective Chromium browser runtime. Google Chrome and Brave must not depend on WebView2; Chrome and Brave availability should be checked only through their browser executable/path. Status messages, fallback logic, prompts, and documentation must not imply that Chrome or Brave needs Edge WebView2.
+- Keep fallback/error wording clear: if no supported Chromium browser runtime is available, the synth cannot provide speech through the Google WASM TTS engine.
 
 ### Supported settings ring parameters
 
@@ -186,7 +187,7 @@ These were removed and must stay removed unless the user explicitly requests a n
 
 - Status/help lines in Speech Settings, the Google TTS settings category, and similar NVDA dialogs must be reachable by Tab and read by NVDA. Use focusable read-only controls for these status lines instead of plain `wx.StaticText`.
 - Focusable status/help controls must have a real label association, not only `SetName()`, so NVDA announces the status/help name before the read-only edit role. If the status/help text can wrap or span multiple lines, make focus announce the complete current message while still allowing arrow-key review inside the read-only edit.
-- Apply this rule to browser runtime status, automatic language profile status, Speech Settings notices, current-browser notices, and future status/help fields with similar behavior.
+- Apply this rule to Chromium browser runtime status, automatic language profile status, Speech Settings notices, current-browser notices, and future status/help fields with similar behavior.
 
 ### Automatic language profiles
 
@@ -259,7 +260,7 @@ Never do these on the NVDA main thread:
 
 - HTTP downloads
 - SHA-256 hashing of large voice packages
-- browser runtime startup
+- Chromium browser runtime startup
 - WebSocket/CDP waits
 - speech synthesis waits
 - package extraction/copying
@@ -316,7 +317,7 @@ They are required for `SharedArrayBuffer` support. Do not remove or weaken them.
 | Add-on data root | `{configPath}/googleTtsForNvda/` |
 | Downloaded voices | `{configPath}/googleTtsForNvda/voices/` |
 | Runtime voices.json | `{configPath}/googleTtsForNvda/runtime/voices.json` |
-| Browser profiles | `%LOCALAPPDATA%/GoogleTtsForNvda/browserProfiles/session-*` |
+| Browser profiles | `%LOCALAPPDATA%/googleTtsForNvda/{chromeProfiles,edgeProfiles,braveProfiles}/persistentSession` |
 | Master catalog | `WasmTtsEngine/20260625.1/voices.json` |
 
 ### `voice_store` contract

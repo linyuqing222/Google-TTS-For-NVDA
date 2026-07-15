@@ -60,6 +60,7 @@ STOP_EXPRESSION = "window.googleTtsForNvdaStop && window.googleTtsForNvdaStop()"
 LOCAL_CACHE_DIR_NAME = "googleTtsForNvda"
 CHROME_PROFILE_DIR_NAME = "chromeProfiles"
 EDGE_PROFILE_DIR_NAME = "edgeProfiles"
+BRAVE_PROFILE_DIR_NAME = "braveProfiles"
 PERSISTENT_PROFILE_DIR_NAME = "persistentSession"
 CONFIG_SECTION = "googleTtsForNvda"
 CONFIG_BROWSER_RUNTIME = "browserRuntime"
@@ -69,6 +70,7 @@ CONFIG_AUTO_LANGUAGE_CANDIDATES = "autoLanguageCandidates"
 CONFIG_AUTO_LANGUAGE_PROFILES = "autoLanguageProfiles"
 BROWSER_RUNTIME_EDGE = "edge"
 BROWSER_RUNTIME_CHROME = "chrome"
+BROWSER_RUNTIME_BRAVE = "brave"
 DEFAULT_BROWSER_RUNTIME = BROWSER_RUNTIME_CHROME
 DEFAULT_AUTO_LANGUAGE_DETECTION = False
 DEFAULT_AUTO_LANGUAGE_PREFERRED = ""
@@ -77,8 +79,9 @@ DEFAULT_AUTO_LANGUAGE_PROFILES = ""
 BROWSER_RUNTIME_LABELS = {
 	BROWSER_RUNTIME_EDGE: "Microsoft Edge",
 	BROWSER_RUNTIME_CHROME: "Google Chrome",
+	BROWSER_RUNTIME_BRAVE: "Brave",
 }
-BROWSER_RUNTIMES = (BROWSER_RUNTIME_CHROME, BROWSER_RUNTIME_EDGE)
+BROWSER_RUNTIMES = (BROWSER_RUNTIME_CHROME, BROWSER_RUNTIME_EDGE, BROWSER_RUNTIME_BRAVE)
 
 if str(WEBSOCKET_CLIENT_DIR) not in sys.path:
 	sys.path.insert(1, str(WEBSOCKET_CLIENT_DIR))
@@ -171,7 +174,7 @@ def _raise_if_cancelled(cancelEvent: threading.Event | None) -> None:
 
 def _friendly_cdp_error(message: str, technicalDetail: str | None = None) -> CdpError:
 	if technicalDetail:
-		log.debug("Google TTS browser runtime detail: %s", technicalDetail)
+		log.debug("Google TTS Chromium browser runtime detail: %s", technicalDetail)
 	return CdpError(message, technicalDetail)
 
 
@@ -297,10 +300,9 @@ def set_configured_browser_runtime(runtime: str) -> str:
 	return runtime
 
 
-def _runtime_fallback_order(runtime: str | None = None) -> tuple[str, str]:
+def _runtime_fallback_order(runtime: str | None = None) -> tuple[str, ...]:
 	preferred = _normalize_browser_runtime(runtime)
-	fallback = BROWSER_RUNTIME_CHROME if preferred == BROWSER_RUNTIME_EDGE else BROWSER_RUNTIME_EDGE
-	return preferred, fallback
+	return tuple(dict.fromkeys((preferred, BROWSER_RUNTIME_CHROME, BROWSER_RUNTIME_EDGE, BROWSER_RUNTIME_BRAVE)))
 
 
 def _edge_webview2_candidates() -> list[str]:
@@ -415,6 +417,16 @@ def _browser_candidates(runtime: str) -> list[str]:
 			shutil.which("msedge.exe") or "",
 			shutil.which("msedge") or "",
 		]
+	elif runtime == BROWSER_RUNTIME_BRAVE:
+		executableName = "brave.exe"
+		envPath = os.environ.get("BRAVE_PATH", "")
+		commonPaths = [
+			str(Path(os.environ.get("PROGRAMFILES", "")) / "BraveSoftware" / "Brave-Browser" / "Application" / executableName),
+			str(Path(os.environ.get("PROGRAMFILES(X86)", "")) / "BraveSoftware" / "Brave-Browser" / "Application" / executableName),
+			str(Path(os.environ.get("LOCALAPPDATA", "")) / "BraveSoftware" / "Brave-Browser" / "Application" / executableName),
+			shutil.which("brave.exe") or "",
+			shutil.which("brave") or "",
+		]
 	else:
 		executableName = "chrome.exe"
 		envPath = os.environ.get("CHROME_PATH", "")
@@ -462,6 +474,8 @@ def browser_runtime_for_path(browserPath: str) -> str:
 	exeName = Path(browserPath).name.lower()
 	if exeName in ("msedge.exe", "msedge"):
 		return BROWSER_RUNTIME_EDGE
+	if exeName in ("brave.exe", "brave"):
+		return BROWSER_RUNTIME_BRAVE
 	return BROWSER_RUNTIME_CHROME
 
 
@@ -483,12 +497,12 @@ def find_browser(runtime: str | None = None) -> str | None:
 
 
 def edge_webview2_blocks_effective_runtime(runtime: str | None = None) -> bool:
-	for candidateRuntime in _runtime_fallback_order(runtime or configured_browser_runtime()):
-		path = browser_path_for_runtime(candidateRuntime)
-		if not path:
-			continue
-		return _normalize_browser_runtime(candidateRuntime) == BROWSER_RUNTIME_EDGE and not edge_webview2_available()
-	return False
+	selectedRuntime = _normalize_browser_runtime(runtime or configured_browser_runtime())
+	return (
+		selectedRuntime == BROWSER_RUNTIME_EDGE
+		and browser_executable_available(BROWSER_RUNTIME_EDGE)
+		and not edge_webview2_available()
+	)
 
 
 class CdpDispatcher:
@@ -598,8 +612,12 @@ class BrowserProcessManager:
 		self._lock = threading.RLock()
 
 	@classmethod
-	def find_chrome(cls) -> str | None:
+	def find_browser(cls) -> str | None:
 		return find_browser()
+
+	@classmethod
+	def find_chrome(cls) -> str | None:
+		return cls.find_browser()
 
 	@property
 	def chrome_process(self) -> subprocess.Popen[bytes] | None:
@@ -650,13 +668,13 @@ class BrowserProcessManager:
 					raise _friendly_cdp_error(
 						_(
 							"Microsoft Edge WebView2 Runtime was not found. "
-							"Install or repair Microsoft Edge WebView2 Runtime before using Microsoft Edge as the Google TTS For NVDA browser runtime."
+							"Install or repair Microsoft Edge WebView2 Runtime before using Microsoft Edge as the Google TTS For NVDA Chromium browser runtime."
 						),
 						"Microsoft Edge executable was found, but Microsoft Edge WebView2 Runtime was not found.",
 					)
 				raise _friendly_cdp_error(
-					_("Microsoft Edge or Google Chrome was not found. Install one of them, or set EDGE_PATH/CHROME_PATH to a browser executable."),
-					"No supported browser runtime executable was found.",
+					_("No supported Chromium browser runtime was found. Install Google Chrome, Microsoft Edge, or Brave, or set CHROME_PATH, EDGE_PATH, or BRAVE_PATH to a browser executable."),
+					"No supported Chromium browser runtime executable was found.",
 				)
 			profileDir = self._get_chrome_profile_dir(chromePath)
 			devToolsFile = profileDir / "DevToolsActivePort"
@@ -721,7 +739,7 @@ class BrowserProcessManager:
 			chromeProcess = self._chromeProcess
 		if debugPort is None:
 			raise _friendly_cdp_error(
-				_("The browser runtime is not ready yet."),
+				_("The Chromium browser runtime is not ready yet."),
 				"Browser DevTools port is not ready.",
 			)
 		for attempt in range(200):
@@ -746,7 +764,7 @@ class BrowserProcessManager:
 						return wsUrl
 			time.sleep(STARTUP_POLL_INTERVAL)
 		raise _friendly_cdp_error(
-			_("Google TTS For NVDA could not find its speech page in the browser runtime."),
+			_("Google TTS For NVDA could not find its speech page in the Chromium browser runtime."),
 			"Could not find browser speech page target.",
 		)
 
@@ -803,6 +821,8 @@ class BrowserProcessManager:
 		exeName = Path(browserPath).name.lower()
 		if exeName in ("msedge.exe", "msedge"):
 			return EDGE_PROFILE_DIR_NAME
+		if exeName in ("brave.exe", "brave"):
+			return BRAVE_PROFILE_DIR_NAME
 		return CHROME_PROFILE_DIR_NAME
 
 	def _cleanup_old_chrome_profiles(self, root: Path) -> None:
@@ -871,13 +891,13 @@ class BrowserProcessManager:
 					raise _friendly_cdp_error(
 						_(
 							"The browser profile used by Google TTS For NVDA is already in use. "
-							"Restart NVDA, or close any leftover Microsoft Edge or Google Chrome helper processes."
+							"Restart NVDA, or close any leftover supported Chromium browser helper processes."
 						),
-						"Browser runtime exited with profile-in-use code 21.",
+						"Chromium browser runtime exited with profile-in-use code 21.",
 					)
 				raise _friendly_cdp_error(
-					_("The browser runtime closed before Google TTS For NVDA was ready."),
-					f"Browser runtime exited before DevTools became available: {exitCode}",
+					_("The Chromium browser runtime closed before Google TTS For NVDA was ready."),
+					f"Chromium browser runtime exited before DevTools became available: {exitCode}",
 				)
 			if devToolsFile.is_file():
 				lines = devToolsFile.read_text(encoding="utf-8").splitlines()
@@ -885,7 +905,7 @@ class BrowserProcessManager:
 					return int(lines[0])
 			time.sleep(STARTUP_POLL_INTERVAL)
 		raise _friendly_cdp_error(
-			_("The browser runtime did not start in time."),
+			_("The Chromium browser runtime did not start in time."),
 			"Timed out waiting for browser DevTools.",
 		)
 
@@ -970,7 +990,7 @@ class CdpClient:
 			ws = self._ws
 		if ws is None or dispatcher is None or not ws.connected:
 			raise _friendly_cdp_error(
-				_("Google TTS For NVDA is not connected to the browser runtime."),
+				_("Google TTS For NVDA is not connected to the Chromium browser runtime."),
 				"Browser DevTools websocket is not connected.",
 			)
 		msgId = self.next_msg_id()
@@ -989,7 +1009,7 @@ class CdpClient:
 					break
 			else:
 				raise _friendly_cdp_error(
-					_("The browser runtime did not respond in time."),
+					_("The Chromium browser runtime did not respond in time."),
 					f"Timed out waiting for {method}.",
 				)
 		finally:
@@ -997,18 +1017,18 @@ class CdpClient:
 
 		if response is None:
 			raise _friendly_cdp_error(
-				_("The browser runtime connection closed unexpectedly."),
+				_("The Chromium browser runtime connection closed unexpectedly."),
 				"Browser DevTools websocket closed.",
 			)
 		if "error" in response:
 			raise _friendly_cdp_error(
-				_("The browser runtime reported an error while processing speech."),
+				_("The Chromium browser runtime reported an error while processing speech."),
 				f"CDP error for {method}: {response['error']}",
 			)
 		exceptionDetails = response.get("result", {}).get("exceptionDetails")
 		if isinstance(exceptionDetails, dict):
 			raise _friendly_cdp_error(
-				_("The browser runtime reported an error while preparing speech."),
+				_("The Chromium browser runtime reported an error while preparing speech."),
 				self.format_exception(exceptionDetails),
 			)
 		return response
@@ -1212,7 +1232,7 @@ class WasmTtsEngineBridge:
 		result = response.get("result", {}).get("result", {})
 		if result.get("subtype") == "error":
 			raise _friendly_cdp_error(
-				_("Google TTS For NVDA could not start speech in the browser runtime."),
+				_("Google TTS For NVDA could not start speech in the Chromium browser runtime."),
 				result.get("description") or "Browser speech evaluation failed.",
 			)
 		value = result.get("value")
@@ -1250,7 +1270,7 @@ class WasmTtsEngineBridge:
 				timeout=5,
 			)
 		except Exception:
-			log.debug("Could not stop Google TTS browser runtime.", exc_info=True)
+			log.debug("Could not stop Google TTS Chromium browser runtime.", exc_info=True)
 
 	def cancel_current(self) -> None:
 		if self._runtimeBusy:
@@ -1268,8 +1288,12 @@ class ChromeTtsBridge:
 		self._lock = threading.RLock()
 
 	@classmethod
+	def find_browser(cls) -> str | None:
+		return BrowserProcessManager.find_browser()
+
+	@classmethod
 	def find_chrome(cls) -> str | None:
-		return BrowserProcessManager.find_chrome()
+		return cls.find_browser()
 
 	@property
 	def _ws(self) -> websocket.WebSocket | None:
@@ -1333,7 +1357,7 @@ class ChromeTtsBridge:
 			self.ensure_connection()
 			self._engine.stop_runtime()
 		except Exception:
-			log.debug("Could not stop Google TTS browser runtime.", exc_info=True)
+			log.debug("Could not stop Google TTS Chromium browser runtime.", exc_info=True)
 
 	def cancel_current(self) -> None:
 		self._engine.cancel_current()

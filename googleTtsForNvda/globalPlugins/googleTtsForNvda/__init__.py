@@ -284,12 +284,74 @@ def _open_web_url(url: str) -> None:
 		webbrowser.open(url, new=2)
 	except Exception:
 		log.exception("Could not open URL for Microsoft Edge WebView2 Runtime.", exc_info=True)
-		gui.messageBox(
-			_("The download page could not be opened. Please visit this address manually:\n{url}").format(url=url),
-			_("Google TTS For NVDA"),
-			wx.OK | wx.ICON_ERROR,
-			gui.mainFrame,
-		)
+		_show_manual_web_url_dialog(url)
+
+
+def _copy_text_to_clipboard(text: str) -> bool:
+	if not wx.TheClipboard.Open():
+		return False
+	try:
+		wx.TheClipboard.SetData(wx.TextDataObject(text))
+		wx.TheClipboard.Flush()
+		return True
+	finally:
+		wx.TheClipboard.Close()
+
+
+def _show_manual_web_url_dialog(url: str) -> None:
+	gui.mainFrame.prePopup()
+	try:
+		dialog = wx.Dialog(gui.mainFrame, title=_("Google TTS For NVDA"))
+		try:
+			mainSizer = wx.BoxSizer(wx.VERTICAL)
+			helper = guiHelper.BoxSizerHelper(dialog, sizer=mainSizer)
+			message = wx.StaticText(
+				dialog,
+				label=_("The download page could not be opened. Please visit this address manually:"),
+			)
+			message.Wrap(520)
+			helper.addItem(message, flag=wx.EXPAND)
+			urlControl = helper.addLabeledControl(
+				_("Download address") + ":",
+				wx.TextCtrl,
+				value=url,
+				style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_WORDWRAP,
+			)
+			urlControl.SetName(_("Download address"))
+			bind_read_only_text_focus_announcement(urlControl)
+			buttonSizer = wx.BoxSizer(wx.HORIZONTAL)
+			copyButton = wx.Button(dialog, label=_("&Copy link"))
+			closeButton = wx.Button(dialog, id=wx.ID_OK, label=_("&Close"))
+			buttonSizer.Add(copyButton, border=guiHelper.BORDER_FOR_DIALOGS, flag=wx.RIGHT)
+			buttonSizer.Add(closeButton)
+			mainSizer.Add(buttonSizer, border=guiHelper.BORDER_FOR_DIALOGS, flag=wx.ALL | wx.ALIGN_RIGHT)
+			dialog.SetSizerAndFit(mainSizer)
+			dialog.SetEscapeId(wx.ID_OK)
+			closeButton.SetDefault()
+
+			def on_copy(evt: wx.CommandEvent) -> None:
+				if _copy_text_to_clipboard(url):
+					gui.messageBox(
+						_("The link was copied to the clipboard."),
+						_("Google TTS For NVDA"),
+						wx.OK | wx.ICON_INFORMATION,
+						dialog,
+					)
+				else:
+					gui.messageBox(
+						_("The link could not be copied to the clipboard."),
+						_("Google TTS For NVDA"),
+						wx.OK | wx.ICON_ERROR,
+						dialog,
+					)
+
+			copyButton.Bind(wx.EVT_BUTTON, on_copy)
+			closeButton.Bind(wx.EVT_BUTTON, lambda evt: dialog.EndModal(wx.ID_OK))
+			dialog.ShowModal()
+		finally:
+			dialog.Destroy()
+	finally:
+		gui.mainFrame.postPopup()
 
 
 def show_edge_webview2_prompt() -> None:
@@ -308,7 +370,7 @@ def show_edge_webview2_prompt() -> None:
 					dialog,
 					label=_(
 						"Microsoft Edge is available, but Microsoft Edge WebView2 Runtime is not available.\n\n"
-						"Google TTS For NVDA needs WebView2 when Microsoft Edge is the browser runtime. "
+						"Google TTS For NVDA needs WebView2 when Microsoft Edge is the Chromium browser runtime. "
 						"NVDA will keep using the previous synthesizer until WebView2 is installed.\n\n"
 						"Choose Download online installer to download Microsoft's Evergreen Bootstrapper. "
 						"Choose Open Microsoft WebView2 page if you need an offline installer or a fixed-version package."

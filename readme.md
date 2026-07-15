@@ -1,6 +1,6 @@
 # Google TTS For NVDA
 
-An NVDA screen reader synthesizer add-on that uses Google's WebAssembly (WASM) Text-to-Speech engine locally through a supported browser runtime (Microsoft Edge or Google Chrome) to provide high-quality, natural-sounding voices offline.
+An NVDA screen reader synthesizer add-on that uses Google's WebAssembly (WASM) Text-to-Speech engine locally through a supported Chromium browser runtime, such as Google Chrome, Microsoft Edge, or Brave, to provide high-quality, natural-sounding voices offline.
 
 This project was created to make Google's high-quality local WebAssembly Text-to-Speech engine usable as a practical, everyday NVDA synthesizer on Windows computers.
 
@@ -10,7 +10,7 @@ This project was created to make Google's high-quality local WebAssembly Text-to
 
 ## Current Status
 
-This add-on is currently being actively maintained and developed by Nguyen Anh Duc, Dao Duc Trung and Pham Hung Vuong. Version 0.3 significantly improves several everyday speech paths, though browser runtime, WASM, cache, and engine behavior can still affect the final result:
+This add-on is currently being actively maintained and developed by Nguyen Anh Duc, Dao Duc Trung and Pham Hung Vuong. Version 0.3 significantly improves several everyday speech paths, though Chromium browser runtime, WASM, cache, and engine behavior can still affect the final result:
 * Voice package startup is improved because the add-on prepares the currently selected package instead of broadly warming multiple packages.
 * Long text and UI speech handling is improved with more careful background segmentation, so speech can often begin sooner while keeping spoken output more natural.
 * Audio balance and harshness are improved across voice packages with dynamic gain control and limiting, reducing the chance of clipping or distorted sound.
@@ -23,22 +23,22 @@ We highly welcome and appreciate any feedback from the community to help us impr
 ## Features
 
 * **Comprehensive Voice Support**: Supports all languages and voices available in WasmTtsEngine. This includes Chrome OS packages (optimized for frequent use and high-speed screen reading) and Google Natural packages (designed for higher quality, standard text reading).
-* **100% Offline Speech**: Speech is rendered locally via a supported headless browser runtime (Microsoft Edge or Google Chrome).
+* **100% Offline Speech**: Speech is rendered locally via a supported headless Chromium browser runtime, such as Google Chrome, Microsoft Edge, or Brave.
 * **Low Latency**: Uses current-package warm-up and advanced background text segmentation to improve speech responsiveness.
 * **Volatile Audio Cache**: In-memory cache for short phrases (under 5000 characters) to optimize repeated announcements safely.
 * **Automatic Language Profiles**: Optionally use per-language voice profiles. With multiple enabled languages, the add-on can switch voices sentence by sentence using bundled CLD2 language detection; with one enabled language, that profile is used for every sentence.
 * **Voice Manager**: Easily browse, filter by language, download, or remove voice packages in batches using a multi-select checkbox interface. Also includes an **Open voice packages folder** button to inspect storage locations.
 * **Background Operations**: Non-blocking downloads and removals on background threads.
 * **Accessible Shortcut**: Press **`NVDA+Ctrl+Shift+G`** to open the Voice Manager instantly.
-* **Browser Runtime Selection**: Choose between Google Chrome and Microsoft Edge as the underlying engine directly from the NVDA settings panel. Google Chrome is the default runtime, with Microsoft Edge used as a fallback when Edge and Microsoft Edge WebView2 Runtime are available.
+* **Chromium Browser Runtime Selection**: Choose Google Chrome, Microsoft Edge, or Brave as the underlying engine directly from the NVDA settings panel. Google Chrome is the default runtime, with Microsoft Edge and Brave available as fallbacks when they can run.
 
 ---
 
 ## Requirements
 
 * **NVDA**: Version 2024.1 or newer. The add-on supports NVDA 2024 through 2026 on both 32-bit (x86) and 64-bit (x64) NVDA builds.
-* **Browser runtime**: Google Chrome or Microsoft Edge must be present on the system. The add-on will search common paths or check your registry automatically. You can also specify a custom path using the `EDGE_PATH` or `CHROME_PATH` environment variable. Microsoft Edge WebView2 Runtime is required only when Microsoft Edge is selected or used as the effective runtime; Google Chrome does not use WebView2.
-* **Interactive Windows user session**: The add-on depends on a background Microsoft Edge or Google Chrome runtime. Do not rely on it in environments where that browser runtime is unavailable or not allowed to start, such as the Windows sign-in screen, secure desktop contexts, Windows PE, recovery environments, or other minimal Windows sessions.
+* **Chromium browser runtime**: Google Chrome, Microsoft Edge, or Brave must be present on the system. The add-on will search common paths or check your registry automatically. You can also specify a custom path using the `CHROME_PATH`, `EDGE_PATH`, or `BRAVE_PATH` environment variable. Microsoft Edge WebView2 Runtime is required only when Microsoft Edge is selected or used as the effective runtime; Google Chrome and Brave do not use WebView2.
+* **Interactive Windows user session**: The add-on depends on a background supported Chromium browser runtime. Do not rely on it in environments where that runtime is unavailable or not allowed to start, such as the Windows sign-in screen, secure desktop contexts, Windows PE, recovery environments, or other minimal Windows sessions.
 
 ---
 
@@ -66,15 +66,15 @@ After installation:
 When automatic language profiles are off, the synthesizer supports the standard NVDA Speech settings ring:
 
 * **Voice**: Choose from your installed speaker/language voice packages.
-* **Rate**: Speech rate. Non-SeaNet packages use the browser runtime rate path; SeaNet packages may use post-synthesis artificial rate processing at higher speeds.
+* **Rate**: Speech rate. Non-SeaNet packages use the Chromium browser runtime rate path; SeaNet packages may use post-synthesis artificial rate processing at higher speeds.
 * **Rate Boost**: Enable to double the computed speech rate for fast reading. High-speed SeaNet speech may use more CPU because the add-on processes generated audio after synthesis.
 * **Pitch**: Speech pitch adjustment.
-* **Volume**: Speech volume (maps to the browser runtime's 0.0 - 1.0 volume range).
+* **Volume**: Speech volume (maps to the Chromium browser runtime's 0.0 - 1.0 volume range).
 
-### Browser Runtime Settings
+### Chromium Browser Runtime Settings
 
 The add-on includes a custom settings panel under **NVDA Settings (NVDA Menu -> Preferences -> Settings) -> Google TTS For NVDA**:
-* **Browser runtime**: Select which browser runtime to use (Google Chrome or Microsoft Edge). The panel shows browser availability on your system and reports Microsoft Edge WebView2 Runtime separately when Microsoft Edge is involved.
+* **Chromium browser runtime**: Select which supported Chromium browser runtime to use (Google Chrome, Microsoft Edge, or Brave). The panel shows browser availability on your system and reports Microsoft Edge WebView2 Runtime separately when Microsoft Edge is involved.
 * **Use automatic language profiles**: Enable automatic profile selection and open the profile controls described below.
 
 ### Automatic Language Profiles
@@ -112,11 +112,13 @@ While automatic language profiles are enabled, NVDA's Speech settings will not o
 
 ## Troubleshooting Edge Runtime Silence
 
-If you choose **Microsoft Edge** as the browser runtime, Google TTS For NVDA also checks whether Microsoft Edge WebView2 Runtime is available. Edge may be installed while WebView2 is missing or damaged, and in that case the add-on cannot use Edge for speech. Google Chrome does not depend on WebView2.
+If you choose **Microsoft Edge** as the Chromium browser runtime, Google TTS For NVDA also checks whether Microsoft Edge WebView2 Runtime is available. Edge may be installed while WebView2 is missing or damaged, and in that case the add-on cannot use Edge for speech. Google Chrome and Brave do not depend on WebView2.
 
 WebView2 is the Microsoft Edge runtime used by native Windows applications to host web content. It is related to Microsoft Edge, but having the normal Edge browser available does not always mean the WebView2 Runtime is installed and healthy for app scenarios. Microsoft recommends the Evergreen WebView2 Runtime for applications because it is shared, automatically updated, and the small Evergreen Bootstrapper downloads the matching runtime for the device architecture.
 
 When WebView2 is needed, Google TTS For NVDA offers buttons to download Microsoft's online Evergreen Bootstrapper, open Microsoft's WebView2 page for offline installers or fixed-version packages, or leave the change for later. NVDA keeps using the previous synthesizer until WebView2 is available.
+
+If Windows cannot open the download page, the add-on shows the download address in a labeled read-only field and includes a **Copy link** button so you can paste the address into a browser manually.
 
 For an online computer, download the Microsoft Edge WebView2 Evergreen Bootstrapper here:
 

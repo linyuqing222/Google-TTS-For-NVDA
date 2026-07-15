@@ -303,7 +303,7 @@ _VIETNAMESE_WORDS = {
 }
 _ENGLISH_WORDS = {
 	"a", "about", "after", "all", "also", "an", "and", "any", "are", "as", "at", "be", "because",
-	"been", "before", "between", "browser", "but", "by", "can", "chrome", "click", "could", "did",
+	"been", "before", "between", "brave", "browser", "but", "by", "can", "chrome", "click", "could", "did",
 	"do", "does", "download", "edge", "for", "from", "has", "have", "if", "in", "install", "is",
 	"it", "language", "more", "not", "of", "on", "open", "or", "package", "press", "runtime", "select",
 	"settings", "speech", "than", "that", "the", "then", "there", "this", "to", "use", "voice", "was",
@@ -434,15 +434,15 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			raise RuntimeError(
 				_(
 					"Microsoft Edge WebView2 Runtime was not found. "
-					"Install it before using Microsoft Edge as the Google TTS For NVDA browser runtime."
+					"Install it before using Microsoft Edge as the Google TTS For NVDA Chromium browser runtime."
 				)
 			)
-		if ChromeTtsBridge.find_chrome() is None:
+		if ChromeTtsBridge.find_browser() is None:
 			wx.CallAfter(self._show_missing_chrome_error)
 			raise RuntimeError(
 				_(
-					"Microsoft Edge or Google Chrome was not found. "
-					"Install one of them, or set EDGE_PATH/CHROME_PATH to a browser executable."
+					"No supported Chromium browser runtime was found. "
+					"Install Google Chrome, Microsoft Edge, or Brave, or set CHROME_PATH, EDGE_PATH, or BRAVE_PATH to a browser executable."
 				)
 			)
 		self.availableVoices = self._build_available_voices()
@@ -583,7 +583,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			import gui
 
 			gui.messageBox(
-				_("Microsoft Edge or Google Chrome was not found. Install one of them, or set EDGE_PATH/CHROME_PATH to a browser executable."),
+				_("No supported Chromium browser runtime was found. Install Google Chrome, Microsoft Edge, or Brave, or set CHROME_PATH, EDGE_PATH, or BRAVE_PATH to a browser executable."),
 				_("Google TTS For NVDA"),
 				wx.OK | wx.ICON_ERROR,
 				gui.mainFrame,

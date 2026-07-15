@@ -146,7 +146,7 @@ def _open_synthesizer_dialog(parent: wx.Window | None = None) -> bool:
 def _save_browser_runtime(runtime: str) -> None:
 	saved = browserBridge.set_configured_browser_runtime(runtime)
 	ui.message(
-		_("Google TTS For NVDA will use {runtime} as its browser runtime.").format(
+		_("Google TTS For NVDA will use {runtime} as its Chromium browser runtime.").format(
 			runtime=_runtime_label(saved),
 		),
 	)
@@ -155,7 +155,7 @@ def _save_browser_runtime(runtime: str) -> None:
 def _schedule_runtime_change_after_synth_switch(runtime: str, parent: wx.Window | None = None) -> None:
 	global _pendingRuntimeChange
 	_pendingRuntimeChange = runtime
-	ui.message(_("Waiting for you to switch away from Google TTS For NVDA before changing the browser runtime."))
+	ui.message(_("Waiting for you to switch away from Google TTS For NVDA before changing the Chromium browser runtime."))
 
 	def open_dialog_and_wait() -> None:
 		if _open_synthesizer_dialog(parent):
@@ -182,7 +182,7 @@ def _apply_runtime_after_synth_switch(runtime: str, attempts: int) -> None:
 		return
 	if attempts >= 600:
 		_pendingRuntimeChange = None
-		ui.message(_("The browser runtime was left unchanged because Google TTS For NVDA is still the current synthesizer."))
+		ui.message(_("The Chromium browser runtime was left unchanged because Google TTS For NVDA is still the current synthesizer."))
 		return
 	wx.CallLater(500, _apply_runtime_after_synth_switch, runtime, attempts + 1)
 
@@ -228,19 +228,19 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 		self._edgeWebView2Available = browserBridge.edge_webview2_available()
 		choices = [self._format_runtime_choice(runtime) for runtime in self._runtimeValues]
 		self.runtimeChoice = helper.addLabeledControl(
-			_("Browser &runtime:"),
+			_("Chromium browser &runtime:"),
 			wx.Choice,
 			choices=choices,
 		)
 		self.runtimeChoice.SetSelection(self._runtimeValues.index(self._savedRuntime))
-		self.runtimeChoice.SetName(_("Browser runtime"))
+		self.runtimeChoice.SetName(_("Chromium browser runtime"))
 		self.effectiveRuntimeText = helper.addLabeledControl(
-			_("Browser runtime status") + ":",
+			_("Chromium browser runtime status") + ":",
 			wx.TextCtrl,
 			value=self._effective_runtime_message(),
 			style=wx.TE_READONLY | wx.TE_MULTILINE | wx.TE_WORDWRAP,
 		)
-		self.effectiveRuntimeText.SetName(_("Browser runtime status"))
+		self.effectiveRuntimeText.SetName(_("Chromium browser runtime status"))
 		bind_read_only_text_focus_announcement(self.effectiveRuntimeText)
 
 		self.autoLanguageCheck = helper.addItem(
@@ -381,13 +381,13 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 				ui.message(
 					_(
 						"Microsoft Edge was found, but Microsoft Edge WebView2 Runtime was not found. "
-						"Keeping the current Google TTS For NVDA browser runtime setting."
+						"Keeping the current Google TTS For NVDA Chromium browser runtime setting."
 					),
 				)
 				self._select_saved_runtime()
 				return
 			ui.message(
-				_("{runtime} was not found. Keeping the current Google TTS For NVDA browser runtime setting.").format(
+				_("{runtime} was not found. Keeping the current Google TTS For NVDA Chromium browser runtime setting.").format(
 					runtime=_runtime_label(selectedRuntime),
 				),
 			)
@@ -398,10 +398,10 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 		if _is_google_synth_current() and selectedRuntime != effectiveRuntime:
 			answer = gui.messageBox(
 				_(
-					"Google TTS For NVDA is using the selected browser runtime now. "
+					"Google TTS For NVDA is using the selected Chromium browser runtime now. "
 					"To change it safely, switch to another synthesizer first.\n\n"
 					"Choose OK to open Select Synthesizer. "
-					"Choose Cancel to keep the current browser runtime."
+					"Choose Cancel to keep the current Chromium browser runtime."
 				),
 				_("Google TTS For NVDA"),
 				wx.OK | wx.CANCEL | wx.ICON_WARNING,
@@ -437,7 +437,7 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 		if selectedRuntime == browserBridge.BROWSER_RUNTIME_EDGE:
 			webView2Status = _("found") if self._edgeWebView2Available else _("not found")
 			selectedMessage = _(
-				"Selected browser runtime: {runtime}. Microsoft Edge: {edgeStatus}. "
+				"Selected Chromium browser runtime: {runtime}. Microsoft Edge: {edgeStatus}. "
 				"Microsoft Edge WebView2 Runtime: {webView2Status}."
 			).format(
 				runtime=selectedLabel,
@@ -446,16 +446,16 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 			)
 		else:
 			selectedMessage = _(
-				"Selected browser runtime: {runtime}. Google Chrome: {chromeStatus}."
-			).format(runtime=selectedLabel, chromeStatus=selectedExecutableStatus)
+				"Selected Chromium browser runtime: {runtime}. {browser}: {browserStatus}."
+			).format(runtime=selectedLabel, browser=selectedLabel, browserStatus=selectedExecutableStatus)
 		if self._effectiveRuntime is None:
-			return _("{selectedStatus} No supported browser runtime was found.").format(selectedStatus=selectedMessage)
+			return _("{selectedStatus} No supported Chromium browser runtime was found.").format(selectedStatus=selectedMessage)
 		if self._effectiveRuntime == selectedRuntime:
-			return _("{selectedStatus} Active browser runtime: {runtime}.").format(
+			return _("{selectedStatus} Active Chromium browser runtime: {runtime}.").format(
 				selectedStatus=selectedMessage,
 				runtime=_runtime_label(self._effectiveRuntime),
 			)
-		return _("{selectedStatus} Falling back to active browser runtime: {runtime}.").format(
+		return _("{selectedStatus} Falling back to active Chromium browser runtime: {runtime}.").format(
 			selectedStatus=selectedMessage,
 			runtime=_runtime_label(self._effectiveRuntime),
 		)
