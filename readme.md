@@ -95,6 +95,47 @@ The add-on includes a custom settings panel under **NVDA Settings (NVDA Menu -> 
 * **Chromium browser runtime**: Select which supported Chromium browser runtime to use (Google Chrome, Microsoft Edge, or Brave). The panel shows browser availability on your system and reports Microsoft Edge WebView2 Runtime separately when Microsoft Edge is involved.
 * **Use automatic language profiles**: Enable automatic profile selection and open the profile controls described below.
 
+### Custom Browser Runtime Paths
+
+Google TTS For NVDA normally finds Google Chrome, Microsoft Edge, or Brave automatically from common Windows install locations and the registry. If you use a portable browser, a custom installation folder, or a managed computer where the browser is installed somewhere unusual, set one of these environment variables to the full browser executable path:
+
+* `CHROME_PATH` for Google Chrome
+* `EDGE_PATH` for Microsoft Edge
+* `BRAVE_PATH` for Brave
+
+The value must point to the browser `.exe` file, not only to the containing folder. Common examples are:
+
+```text
+C:\Program Files\Google\Chrome\Application\chrome.exe
+C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe
+```
+
+To set a path with the Windows graphical interface:
+
+1. Press **`Windows+R`** to open the Run dialog.
+2. Type `SystemPropertiesAdvanced` and press **Enter**. This opens the **Advanced** tab of the **System Properties** dialog.
+3. Press **Tab** until you reach **Environment Variables...**, then press **Enter**.
+4. In the **User variables** section, choose **New...**. Use **User variables** unless you specifically need the setting for every Windows account on the computer; editing **System variables** may require administrator permission.
+5. In **Variable name**, enter one of these names: `CHROME_PATH`, `EDGE_PATH`, or `BRAVE_PATH`.
+6. In **Variable value**, enter the full path to the matching browser executable, such as `C:\Program Files\Google\Chrome\Application\chrome.exe`.
+7. Press **OK** to close each dialog.
+8. Restart NVDA so the add-on can read the new value.
+
+Screen reader note: in the **Environment Variables** dialog, there are two variable lists: **User variables** first, then **System variables**. If you hear the System variables list, press **Shift+Tab** to move back toward the User variables controls, or keep tabbing until you reach the **New...** button associated with User variables.
+
+To set a path for the current Windows user from Command Prompt or PowerShell instead, use `setx`:
+
+```bat
+setx CHROME_PATH "C:\Path\To\chrome.exe"
+setx EDGE_PATH "C:\Path\To\msedge.exe"
+setx BRAVE_PATH "C:\Path\To\brave.exe"
+```
+
+After setting or changing one of these variables, restart NVDA so the add-on can read the new value. Then open **NVDA Settings -> Google TTS For NVDA** and select the matching Chromium browser runtime.
+
+You only need to set the variable for the runtime you want to override. If the variable is missing or points to a file that does not exist, the add-on continues checking the normal install locations. Microsoft Edge WebView2 Runtime is still required only when Microsoft Edge is selected or used as the effective runtime; Google Chrome and Brave do not use WebView2.
+
 ### Automatic Language Profiles
 
 When you enable **Use automatic language profiles**, the add-on uses its own per-language profiles instead of the normal NVDA Speech settings for detected sentences. If only one language profile is enabled, that profile is used for every sentence. This keeps your regular Google TTS language and variant settings unchanged for times when automatic language profiles are off.
@@ -165,7 +206,7 @@ The build script reads the version from `googleTtsForNvda/manifest.ini`, builds 
 The verified `.nvda-addon` package will be created in the `dist/` directory, with a name like:
 
 ```text
-dist/googleTtsForNvda-0.3.nvda-addon
+dist/googleTtsForNvda-0.4.nvda-addon
 ```
 
 ---
