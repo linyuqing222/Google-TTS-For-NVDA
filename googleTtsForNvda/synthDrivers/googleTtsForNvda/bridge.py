@@ -1265,6 +1265,7 @@ class WasmTtsEngineBridge:
 			"rate": options["rate"],
 			"artificialRate": options.get("artificialRate", 1),
 			"pitch": options["pitch"],
+			"postPitch": options.get("postPitch", 1),
 			"volume": options["volume"],
 			"outputGain": options.get("outputGain", options["volume"]),
 		}

@@ -338,12 +338,19 @@ They are required for `SharedArrayBuffer` support. Do not remove or weaken them.
 - `bridgeHarness.js` should remain strict-mode and IIFE-wrapped.
 - Avoid changing PCM conversion semantics unless fixing a documented audio bug.
 
-### SeaNet protected rate handling
+### SeaNet protected rate and pitch handling
 
 - Apply protected high-rate behavior only to package IDs ending in `-seanet`, such as `multi-seanet`, `afh-seanet`, and `fis-seanet`.
 - Do not apply the SeaNet artificial-rate path to non-SeaNet packages such as `multi`, `afh`, and `fis`.
 - Keep the engine rate safer for SeaNet quality at high speeds, then apply artificial rate processing to generated PCM in `bridgeHarness.js`.
-- Expect higher CPU usage when users read quickly with SeaNet packages because the add-on performs post-synthesis audio processing.
+- SeaNet pitch must remain effective even when the underlying WASM engine ignores or weakens its `pitch` option. For SeaNet packages, send neutral engine pitch and carry the desired pitch as `postPitch` for browser-side PCM processing.
+- Post-synthesis pitch processing must run before artificial tempo processing. The pitch pass changes duration as a side effect, and `tempoRateFromPayload()` compensates so the user's requested speech rate stays stable.
+- Cache keys for short speech must include both `pitch` and `postPitch`; otherwise changing Pitch can replay cached audio generated with the old post-synthesis pitch.
+- Expect higher CPU usage when users read quickly or use non-neutral pitch with SeaNet packages because the add-on performs post-synthesis audio processing.
+- SeaNet rate/pitch code map:
+  - Synth-side option building lives in `googleTtsForNvda/synthDrivers/googleTtsForNvda/__init__.py`: `_speech_options()`, `_uses_protected_engine_rate()`, `_rate_to_chrome()`, `_pitch_to_chrome()`, and `_short_cache_key()`.
+  - The Python-to-browser payload contract lives in `googleTtsForNvda/synthDrivers/googleTtsForNvda/bridge.py`: `WasmTtsEngineBridge.speak()` must pass `rate`, `artificialRate`, `pitch`, `postPitch`, `volume`, and `outputGain` together.
+  - Browser-side AI audio processing lives in `googleTtsForNvda/synthDrivers/googleTtsForNvda/web/bridgeHarness.js`: `postPitchFactorFromPayload()`, `tempoRateFromPayload()`, `resetPitchProcessor()`, `processPitchSamples()`, `processTempoSamples()`, `queueTempoInput()`, `flushAudioProcessors()`, `flushTempoProcessor()`, `queueAudio()`, `finishSegmentAudio()`, and `googleTtsForNvdaSpeak()`.
 
 ### CDP/WebSocket expectations
 

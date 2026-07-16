@@ -6,6 +6,7 @@
 	let currentMarkOffset = 0;
 	let currentOutputGain = 1;
 	let currentTempoRate = 1;
+	let currentPostPitchFactor = 1;
 	let currentAgcGain = 1;
 	let currentLimiterGain = 1;
 	let lastChunkAt = 0;
@@ -38,6 +39,8 @@
 	let emittedAudioPackets = 0;
 	let pendingAudioBuffers = [];
 	let pendingAudioSampleCount = 0;
+	let pitchInputBuffer = new Float32Array(0);
+	let pitchReadOffset = 0;
 	let tempoInputBuffer = new Float32Array(0);
 	let tempoReadOffset = 0;
 	let tempoOverlapTail = new Float32Array(0);
@@ -193,10 +196,17 @@
 
 	function tempoRateFromPayload(payload) {
 		const rate = Number(payload && payload.artificialRate);
-		if (!Number.isFinite(rate)) {
+		const artificialRate = Number.isFinite(rate) ? Math.max(0.5, Math.min(2.2, rate)) : 1;
+		const postPitchFactor = Math.max(0.35, Math.min(2.5, currentPostPitchFactor || 1));
+		return Math.max(0.35, Math.min(5.5, artificialRate / postPitchFactor));
+	}
+
+	function postPitchFactorFromPayload(payload) {
+		const pitchFactor = Number(payload && payload.postPitch);
+		if (!Number.isFinite(pitchFactor)) {
 			return 1;
 		}
-		return Math.max(0.5, Math.min(2.2, rate));
+		return Math.max(0.35, Math.min(2.5, pitchFactor));
 	}
 
 	function updateAgcGain(buffers, sampleCount) {
@@ -304,12 +314,18 @@
 		pendingAudioBuffers = [];
 		pendingAudioSampleCount = 0;
 		emittedAudioPackets = 0;
+		resetPitchProcessor();
 		resetTempoProcessor();
 		heldBoundarySamples = new Float32Array(0);
 		trimLeadingBoundarySilence = false;
 		leadingBoundaryTrimBudget = 0;
 		currentAgcGain = 1;
 		currentLimiterGain = 1;
+	}
+
+	function resetPitchProcessor() {
+		pitchInputBuffer = new Float32Array(0);
+		pitchReadOffset = 0;
 	}
 
 	function resetTempoProcessor() {
@@ -386,6 +402,48 @@
 		return combineSampleParts(parts);
 	}
 
+	function processPitchSamples(samples, final = false) {
+		if (Math.abs(currentPostPitchFactor - 1) < 0.001) {
+			resetPitchProcessor();
+			return samples;
+		}
+		if (samples.length) {
+			pitchInputBuffer = appendSamples(pitchInputBuffer, samples);
+		}
+		const outputParts = [];
+		if (pitchInputBuffer.length > 1) {
+			const outputLength = Math.max(
+				0,
+				Math.floor((pitchInputBuffer.length - 1 - pitchReadOffset) / currentPostPitchFactor)
+			);
+			if (outputLength > 0) {
+				const output = new Float32Array(outputLength);
+				for (let index = 0; index < outputLength; index++) {
+					const inputIndex = Math.floor(pitchReadOffset);
+					const fraction = pitchReadOffset - inputIndex;
+					const current = pitchInputBuffer[inputIndex];
+					const next = pitchInputBuffer[Math.min(inputIndex + 1, pitchInputBuffer.length - 1)];
+					output[index] = current + (next - current) * fraction;
+					pitchReadOffset += currentPostPitchFactor;
+				}
+				appendTempoOutput(outputParts, output);
+			}
+			const discard = Math.max(0, Math.floor(pitchReadOffset) - 1);
+			if (discard > 0) {
+				pitchInputBuffer = pitchInputBuffer.slice(discard);
+				pitchReadOffset -= discard;
+			}
+		}
+		if (final) {
+			if (pitchInputBuffer.length) {
+				const remainingOffset = Math.min(Math.floor(pitchReadOffset), pitchInputBuffer.length - 1);
+				appendTempoOutput(outputParts, pitchInputBuffer.subarray(remainingOffset));
+			}
+			resetPitchProcessor();
+		}
+		return combineSampleParts(outputParts);
+	}
+
 	function processTempoSamples(samples, final = false) {
 		if (Math.abs(currentTempoRate - 1) < 0.001) {
 			resetTempoProcessor();
@@ -416,6 +474,21 @@
 			resetTempoProcessor();
 		}
 		return combineSampleParts(outputParts);
+	}
+
+	function queueTempoInput(samples, sessionToken = currentSessionToken) {
+		const tempoSamples = processTempoSamples(samples);
+		if (tempoSamples.length) {
+			queueProcessedAudio(tempoSamples, sessionToken);
+		}
+	}
+
+	function flushAudioProcessors(sessionToken = currentSessionToken) {
+		const pitchSamples = processPitchSamples(new Float32Array(0), true);
+		if (pitchSamples.length) {
+			queueTempoInput(pitchSamples, sessionToken);
+		}
+		flushTempoProcessor(sessionToken);
 	}
 
 	function flushTempoProcessor(sessionToken = currentSessionToken) {
@@ -566,9 +639,9 @@
 		if (!isCurrentSession(sessionToken)) {
 			return;
 		}
-		const tempoSamples = processTempoSamples(samples);
-		if (tempoSamples.length) {
-			queueProcessedAudio(tempoSamples, sessionToken);
+		const pitchSamples = processPitchSamples(samples);
+		if (pitchSamples.length) {
+			queueTempoInput(pitchSamples, sessionToken);
 		}
 	}
 
@@ -581,7 +654,7 @@
 			return;
 		}
 		if (!hasNextSegment) {
-			flushTempoProcessor(sessionToken);
+			flushAudioProcessors(sessionToken);
 		}
 		let samples = heldBoundarySamples;
 		heldBoundarySamples = new Float32Array(0);
@@ -756,6 +829,7 @@
 			synthesisGenerating = false;
 			resetAudioQueue();
 			currentTempoRate = 1;
+			currentPostPitchFactor = 1;
 			smoothSegmentBoundaries = false;
 			await ensureEngineInitialized();
 			const engine = getTtsEngine();
@@ -827,6 +901,7 @@
 			sawSynthesisEnd = false;
 			synthesisGenerating = false;
 			resetAudioQueue();
+			currentPostPitchFactor = postPitchFactorFromPayload(payload);
 			currentTempoRate = tempoRateFromPayload(payload);
 			smoothSegmentBoundaries = hasHiddenSegments;
 			emit({ type: "started" }, sessionToken);
@@ -865,7 +940,7 @@
 			}
 			currentMarkOffset = 0;
 			readyVoices.add(payload.voiceName);
-			flushTempoProcessor(sessionToken);
+			flushAudioProcessors(sessionToken);
 			flushAudioQueue(sessionToken);
 			emit({ type: "done" }, sessionToken);
 			await stopActiveSynthesis();

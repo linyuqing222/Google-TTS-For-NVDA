@@ -1535,6 +1535,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			options.get("voiceId"),
 			options.get("rate"),
 			options.get("pitch"),
+			options.get("postPitch"),
 			options.get("volume"),
 			options.get("outputGain"),
 			options.get("artificialRate"),
@@ -1893,7 +1894,11 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 		desiredRate = self._rate_to_chrome(rate, rateBoost)
 		engineRate = desiredRate
 		artificialRate = 1.0
-		if self._uses_protected_engine_rate(package.id) and desiredRate > _PROTECTED_ENGINE_RATE:
+		usesProtectedEngineRate = self._uses_protected_engine_rate(package.id)
+		pitchValue = self._pitch_to_chrome(pitch)
+		enginePitch = 1.0 if usesProtectedEngineRate else pitchValue
+		postPitch = pitchValue if usesProtectedEngineRate else 1.0
+		if usesProtectedEngineRate and desiredRate > _PROTECTED_ENGINE_RATE:
 			engineRate = _PROTECTED_ENGINE_RATE
 			artificialRate = max(_MIN_ARTIFICIAL_RATE, min(_MAX_ARTIFICIAL_RATE, desiredRate / engineRate))
 		return {
@@ -1902,7 +1907,8 @@ class SynthDriver(synthDriverHandler.SynthDriver):
 			"lang": speaker.language,
 			"rate": round(engineRate, 3),
 			"artificialRate": round(artificialRate, 3),
-			"pitch": self._pitch_to_chrome(pitch),
+			"pitch": round(enginePitch, 3),
+			"postPitch": round(postPitch, 3),
 			"volume": round(volumeLevel, 4),
 			"outputGain": round(outputGain, 4),
 		}
