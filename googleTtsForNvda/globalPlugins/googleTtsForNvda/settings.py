@@ -197,7 +197,7 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 		self._edgeWebView2Available = self._runtimeSnapshot["edgeWebView2Available"]
 		self._effectiveRuntime = self._runtimeSnapshot["effectiveRuntime"]
 
-	def makeSettings(self, settingsSizer: wx.Sizer) -> None:
+	def makeSettings(self, settingsSizer: wx.Sizer, *args: object, **kwargs: object) -> None:
 		self._settingsSizer = settingsSizer
 		self._runtimeValues = list(browserBridge.BROWSER_RUNTIMES)
 		self._refresh_runtime_snapshot()
@@ -364,7 +364,7 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 	def postInit(self) -> None:
 		self.runtimeChoice.SetFocus()
 
-	def onSave(self) -> None:
+	def onSave(self, *args: object, **kwargs: object) -> None:
 		selection = self.runtimeChoice.GetSelection()
 		if selection < 0:
 			selectedRuntime = self._savedRuntime
