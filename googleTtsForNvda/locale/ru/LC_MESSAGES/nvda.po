@@ -5,8 +5,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: GoogleTTSForNVDA\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-20 10:09+0300\n"
-"PO-Revision-Date: 2026-07-20 10:13+0300\n"
+"POT-Creation-Date: 2026-07-21 14:34+0300\n"
+"PO-Revision-Date: 2026-07-21 14:37+0300\n"
 "Last-Translator: \n"
 "Language-Team: nvda.ru\n"
 "Language: ru\n"
@@ -593,20 +593,20 @@ msgstr ""
 "Google TTS Для NVDA не удалось найти свою речевую страницу в среде "
 "выполнения браузера на Chromium."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1302
+#: synthDrivers/googleTtsForNvda/bridge.py:1342
 msgid "Google TTS For NVDA could not finish loading the browser speech engine."
 msgstr ""
 "Google TTS Для NVDA не удалось завершить загрузку речевого движка браузера."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1430
+#: synthDrivers/googleTtsForNvda/bridge.py:1470
 msgid "Google TTS For NVDA could not speak this text."
 msgstr "Google TTS Для NVDA не удалось произнести этот текст."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1131
+#: synthDrivers/googleTtsForNvda/bridge.py:1163
 msgid "Google TTS For NVDA could not start its local browser bridge."
 msgstr "Google TTS Для NVDA не удалось запустить локальный мост браузера."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1458
+#: synthDrivers/googleTtsForNvda/bridge.py:1498
 msgid ""
 "Google TTS For NVDA could not start speech in the Chromium browser runtime."
 msgstr ""
@@ -617,7 +617,7 @@ msgstr ""
 msgid "Google TTS For NVDA is already checking for updates."
 msgstr "Google TTS Для NVDA уже проверяет обновления."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1209
+#: synthDrivers/googleTtsForNvda/bridge.py:1241
 msgid "Google TTS For NVDA is not connected to the Chromium browser runtime."
 msgstr ""
 "Google TTS Для NVDA не подключен к среде выполнения браузера на Chromium."
@@ -1202,23 +1202,23 @@ msgid ""
 msgstr ""
 "Отмеченные голосовые пакеты не поддерживаются встроенным движком Google TTS."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1115
+#: synthDrivers/googleTtsForNvda/bridge.py:1131
 msgid ""
 "The Chromium browser runtime closed before Google TTS For NVDA was ready."
 msgstr ""
 "Среда выполнения браузера на Chromium закрылась до того, как Google TTS Для "
 "NVDA был готов."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1236
+#: synthDrivers/googleTtsForNvda/bridge.py:1276
 msgid "The Chromium browser runtime connection closed unexpectedly."
 msgstr ""
 "Соединение со средой выполнения браузера на Chromium неожиданно закрылось."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1228
+#: synthDrivers/googleTtsForNvda/bridge.py:1266
 msgid "The Chromium browser runtime did not respond in time."
 msgstr "Среда выполнения браузера на Chromium не ответила вовремя."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1124
+#: synthDrivers/googleTtsForNvda/bridge.py:1156
 msgid "The Chromium browser runtime did not start in time."
 msgstr "Среда выполнения браузера на Chromium не запустилась вовремя."
 
@@ -1226,12 +1226,12 @@ msgstr "Среда выполнения браузера на Chromium не за
 msgid "The Chromium browser runtime is not ready yet."
 msgstr "Среда выполнения браузера на Chromium еще не готова."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1247
+#: synthDrivers/googleTtsForNvda/bridge.py:1287
 msgid "The Chromium browser runtime reported an error while preparing speech."
 msgstr ""
 "Среда выполнения браузера на Chromium сообщила об ошибке при подготовке речи."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1241
+#: synthDrivers/googleTtsForNvda/bridge.py:1281
 msgid "The Chromium browser runtime reported an error while processing speech."
 msgstr ""
 "Среда выполнения браузера на Chromium сообщила об ошибке при обработке речи."
@@ -1295,8 +1295,8 @@ msgid ""
 msgstr ""
 "Не удалось найти файл голосового пакета. Обновите список и повторите попытку."
 
-#: synthDrivers/googleTtsForNvda/bridge.py:1315
-#: synthDrivers/googleTtsForNvda/bridge.py:1360
+#: synthDrivers/googleTtsForNvda/bridge.py:1355
+#: synthDrivers/googleTtsForNvda/bridge.py:1400
 msgid ""
 "This voice package is not installed. Open Google TTS Voice Manager to "
 "install it."
@@ -1305,8 +1305,8 @@ msgstr ""
 "чтобы установить его."
 
 #: globalPlugins/googleTtsForNvda/voiceManager.py:1047
-#: synthDrivers/googleTtsForNvda/bridge.py:1310
-#: synthDrivers/googleTtsForNvda/bridge.py:1355
+#: synthDrivers/googleTtsForNvda/bridge.py:1350
+#: synthDrivers/googleTtsForNvda/bridge.py:1395
 msgid "This voice package is not supported by the bundled Google TTS engine."
 msgstr "Этот голосовой пакет не поддерживается встроенным движком Google TTS."
 
@@ -1379,24 +1379,30 @@ msgstr "Использовать этот языковой профиль"
 msgid ""
 "Version 0.5:\n"
 "- Added built-in add-on update checking, with optional startup checks, "
-"localized update information, in-NVDA download, and handoff to NVDA's add-on "
-"installer.\n"
+"localized update information, in-NVDA download, handoff to NVDA's add-on "
+"installer, and support for small hotfix builds inside the same public "
+"version.\n"
 "- Improved Chrome, Edge, and Brave runtime fallback, including skipping Edge "
-"when WebView2 is missing and another supported runtime is usable.\n"
+"when WebView2 is missing and another supported runtime is usable, and "
+"reducing silent startup or connection failures while the browser is still "
+"starting.\n"
 "- Improved NVDA compatibility, language-change handling, speech reliability, "
-"optional pause shortening, Simplified Chinese and Russian localization, and "
-"accessible read-only status fields."
+"optional pause shortening, Simplified Chinese, Traditional Chinese, and "
+"Russian localization, and accessible read-only status fields."
 msgstr ""
-"Версия 0.5:\\n\n"
+"Версия 0.5:\n"
 "- Добавлена встроенная проверка обновлений дополнения с возможностью "
 "проверки при запуске, локализованной информацией об обновлениях, загрузкой в "
-"NVDA и передачей установщику дополнений NVDA.\\n\n"
+"NVDA, передачей установщику дополнений NVDA и поддержкой небольших сборок "
+"исправлений внутри одной и той же публичной версии.\n"
 "- Улучшен механизм резервного переключения сред выполнения Chrome, Edge и "
 "Brave, включая пропуск Edge при отсутствии WebView2 и наличии другой "
-"поддерживаемой среды выполнения.\\n\n"
+"поддерживаемой среды выполнения, а также уменьшение случаев молчаливого сбоя "
+"запуска или подключения, пока браузер еще запускается.\n"
 "- Улучшена совместимость с NVDA, обработка переключения языков, надежность "
-"речи, опциональное укорачивание пауз, локализация на упрощенный китайский и "
-"русский языки, а также доступность полей состояния только для чтения."
+"речи, опциональное укорачивание пауз, локализация на упрощенный китайский, "
+"традиционный китайский и русский языки, а также доступность полей состояния "
+"только для чтения."
 
 #: globalPlugins/googleTtsForNvda/voiceManager.py:115
 msgid "Vietnamese"
@@ -1590,6 +1596,29 @@ msgstr "{size:.1f} МБ"
 #: globalPlugins/googleTtsForNvda/settings.py:687
 msgid "{voice} ({package})"
 msgstr "{voice} ({package})"
+
+#~ msgid ""
+#~ "Version 0.5:\n"
+#~ "- Added built-in add-on update checking, with optional startup checks, "
+#~ "localized update information, in-NVDA download, and handoff to NVDA's add-"
+#~ "on installer.\n"
+#~ "- Improved Chrome, Edge, and Brave runtime fallback, including skipping "
+#~ "Edge when WebView2 is missing and another supported runtime is usable.\n"
+#~ "- Improved NVDA compatibility, language-change handling, speech "
+#~ "reliability, optional pause shortening, Simplified Chinese and Russian "
+#~ "localization, and accessible read-only status fields."
+#~ msgstr ""
+#~ "Версия 0.5:\\n\n"
+#~ "- Добавлена встроенная проверка обновлений дополнения с возможностью "
+#~ "проверки при запуске, локализованной информацией об обновлениях, "
+#~ "загрузкой в NVDA и передачей установщику дополнений NVDA.\\n\n"
+#~ "- Улучшен механизм резервного переключения сред выполнения Chrome, Edge и "
+#~ "Brave, включая пропуск Edge при отсутствии WebView2 и наличии другой "
+#~ "поддерживаемой среды выполнения.\\n\n"
+#~ "- Улучшена совместимость с NVDA, обработка переключения языков, "
+#~ "надежность речи, опциональное укорачивание пауз, локализация на "
+#~ "упрощенный китайский и русский языки, а также доступность полей состояния "
+#~ "только для чтения."
 
 #~ msgid ""
 #~ "Version 0.5:\n"
