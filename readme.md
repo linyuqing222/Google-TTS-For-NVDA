@@ -10,7 +10,10 @@ This project was created to make Google's high-quality local WebAssembly Text-to
 
 ## Current Status
 
-This add-on is actively maintained by Nguyen Anh Duc, Dao Duc Trung and Pham Hung Vuong.
+Latest stable release: **Google TTS For NVDA 0.5**, last updated on **July 22, 2026**.
+
+* Full change log for version 0.5: [Google TTS For NVDA v0.5 release notes](https://github.com/nguyenanhduc09/Google-TTS-For-NVDA/releases/tag/v0.5)
+* Download the latest stable add-on package: [googleTtsForNvda-0.5.nvda-addon](https://github.com/nguyenanhduc09/Google-TTS-For-NVDA/releases/download/v0.5/googleTtsForNvda-0.5.nvda-addon)
 
 ---
 
@@ -152,6 +155,8 @@ When a newer version is available, Google TTS For NVDA shows an **Update informa
 
 Automatic startup checks are off by default. If you turn them on, Google TTS For NVDA checks once after the next NVDA startup and stays silent unless a newer version is available. Manual checking remains available whether automatic checks are on or off. If a background startup check is already running while the settings category is open, the manual check button is disabled until that check finishes. Changing the **Automatically check for add-on updates when NVDA starts** checkbox affects future NVDA startups and does not interrupt a check that is already running.
 
+For urgent fixes, the maintainers may publish a small update that keeps the same public version number. For example, an update may still be shown as **Google TTS For NVDA 0.5** and use the same `googleTtsForNvda-0.5.nvda-addon` file name, but NVDA can still offer it as a newer add-on update. This lets users receive important compatibility or reliability fixes sooner, without waiting for the next public version.
+
 ### Automatic Language Profiles
 
 When you enable **Use automatic language profiles**, the add-on uses its own per-language profiles instead of the normal NVDA Speech settings for detected sentences. If only one language profile is enabled, that profile is used for every sentence. This keeps your regular Google TTS language and variant settings unchanged for times when automatic language profiles are off.
@@ -216,15 +221,7 @@ To package the add-on yourself:
 build.bat
 ```
 
-On WSL or Linux, run the equivalent shell script instead:
-
-```bash
-bash build.sh
-```
-
-Both scripts read the version from `googleTtsForNvda/manifest.ini`, build all add-on locales non-interactively, check Python and JavaScript syntax, verify that no `.zvoice` voice packages are inside the source tree, remove generated `__pycache__` folders, and package the add-on. `build.sh` needs Python 3, Node.js, and `zip` on the WSL/Linux side.
-
-WSL/Linux can build, check, and package the add-on, but it cannot run or test it: NVDA and the Chromium browser runtime this add-on depends on are Windows-only, so install and runtime testing must still happen on Windows. WSL's Python is usually newer than the one bundled with NVDA, so its syntax check catches outright syntax errors but cannot catch new syntax that NVDA's own Python does not accept yet.
+The build script reads the version from `googleTtsForNvda/manifest.ini`, builds all add-on locales non-interactively, checks Python and JavaScript syntax, verifies that no `.zvoice` voice packages are inside the source tree, removes generated `__pycache__` folders, and packages the add-on.
 
 The verified `.nvda-addon` package will be created in the `dist/` directory, with a name like:
 
