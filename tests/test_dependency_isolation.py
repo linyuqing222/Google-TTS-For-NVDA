@@ -30,6 +30,15 @@ GLOBAL_PLUGIN_INTERNAL_MODULES = {
 	"uiUtils",
 	"voiceManager",
 }
+NVDA_ONLY_MODULES = (
+	"addonHandler",
+	"config",
+	"globalVars",
+	"languageHandler",
+	"nvwave",
+	"synthDriverHandler",
+	"wx",
+)
 
 
 class BundledDependencyIsolationTests(unittest.TestCase):
@@ -85,6 +94,13 @@ class BundledDependencyIsolationTests(unittest.TestCase):
 
 	def test_global_plugin_internal_modules_use_package_relative_imports(self) -> None:
 		self._assert_internal_modules_use_relative_imports(GLOBAL_PLUGIN_DIR, GLOBAL_PLUGIN_INTERNAL_MODULES)
+
+	def test_pure_driver_modules_have_no_nvda_dependencies(self) -> None:
+		for driverModuleName in ("language_profiles", "speech_processing"):
+			module = load_driver_module(driverModuleName)
+			for moduleName in NVDA_ONLY_MODULES:
+				with self.subTest(driverModule=driverModuleName, dependency=moduleName):
+					self.assertNotIn(moduleName, module.__dict__)
 
 	def _assert_internal_modules_use_relative_imports(
 		self,

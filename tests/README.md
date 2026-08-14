@@ -1,4 +1,4 @@
-# Segmentation corpus
+# Standalone regression tests
 
 `segmentation_corpus.json` records locale punctuation, abbreviation, URL, emoji,
 CJK/Thai no-space text, and long-sentence cases. The source notes come from the
@@ -9,9 +9,10 @@ than 200 UTF-16 code units.
 The corpus expected results describe this add-on's segmenter rather than claiming
 byte-for-byte parity with Java `BreakIterator`.
 
-The corpus imports the production `speech_processing.py` module directly. That
-module has no NVDA imports, so the test exercises the real segmenter rather than
-an AST copy of its implementation.
+`test_speech_processing.py` loads the production `speech_processing.py` module
+directly and owns both the focused PCM/cache tests and the segmentation corpus
+checks. The production module has no NVDA imports, so these tests exercise the
+real implementation rather than an AST copy.
 
 `test_support.py` owns repository paths, isolated loading of pure driver
 modules, and PCM packing helpers. Reuse it when adding standalone tests instead
@@ -21,14 +22,17 @@ validated before behavioral cases run.
 
 `test_speech_processing.py` covers all three pause modes, the inclusive PCM
 noise floor, arbitrary/odd PCM packet boundaries, hidden-segment finalization,
-bounded lead buffering, whole/segment cache identity, and safe boundary-context
-reuse. The corpus also protects the medium-text fast-first fallback.
+bounded lead buffering, whole/segment cache identity, safe boundary-context
+reuse, text segmentation, corpus schema validation, and the medium-text
+fast-first fallback. Keep these tests together because they exercise the same
+standalone speech-processing module.
 
 `test_dependency_isolation.py` verifies that the browser bridge loads Google TTS
 For NVDA's private vendored WebSocket client even when another add-on has already
 registered a top-level `websocket` module. It also prevents optional third-party
-imports from leaking into the vendored client and checks that CLD2, browser files,
-and the pinned WASM engine stay anchored to this add-on's own directories.
+imports from leaking into the vendored client, keeps pure driver helpers free of
+NVDA-only dependencies, and checks that CLD2, browser files, and the pinned WASM
+engine stay anchored to this add-on's own directories.
 
 `test_runtime_recovery.py` covers browser-reported speech failures: a request may
 be retried once with a fresh runtime only before any PCM is emitted, partial audio
@@ -41,7 +45,7 @@ Run all standalone tests without importing NVDA:
 python -m unittest discover -s tests -v
 ```
 
-`test_unicode_data.py` also verifies that every language root in the latest bundled
+`test_unicode_data.py` also verifies that every language root in the configured bundled
 `voices.json` has generated script data and that the pinned Unicode sentence-terminal
 table is complete. It imports the production `language_profiles.py` fallback
 directly rather than extracting methods from the NVDA synth driver. The expected

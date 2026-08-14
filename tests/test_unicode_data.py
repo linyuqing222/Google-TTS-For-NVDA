@@ -183,11 +183,6 @@ class UnicodeDataTests(unittest.TestCase):
         self.assertIsNone(self.language_profiles.language_script_signal("🙂", self.supported_roots))
         self.assertFalse(self.language_profiles.token_has_character_in_ranges("🙂", ((0x0041, 0x005A),)))
 
-    def test_language_profile_module_has_no_nvda_dependencies(self) -> None:
-        for module_name in ("addonHandler", "config", "globalVars", "languageHandler", "synthDriverHandler"):
-            with self.subTest(module=module_name):
-                self.assertNotIn(module_name, self.language_profiles.__dict__)
-
     def test_official_sentence_terminal_property_is_complete(self) -> None:
         terminals = self.data["SENTENCE_TERMINAL_CODEPOINTS"]
         self.assertEqual(170, len(terminals))

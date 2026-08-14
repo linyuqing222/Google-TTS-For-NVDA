@@ -1,8 +1,43 @@
 from __future__ import annotations
 
+import json
+import unicodedata
 import unittest
 
-from tests.test_support import load_driver_module, pcm_bytes as _pcm, pcm_samples as _samples
+from tests.test_support import ROOT, load_driver_module, pcm_bytes as _pcm, pcm_samples as _samples
+
+
+CORPUS_PATH = ROOT / "tests" / "segmentation_corpus.json"
+SUPPORTED_SCHEMA_VERSION = 1
+SUPPORTED_OPERATIONS = {"sentenceUnits", "latencySegments"}
+REQUIRED_CATEGORIES = {
+    "locale-punctuation",
+    "abbreviation",
+    "url",
+    "emoji",
+    "cjk",
+    "thai",
+    "long-sentence",
+}
+
+
+def _materialize_text(case: dict[str, object]) -> str:
+    text = case.get("text")
+    if isinstance(text, str):
+        return text
+    builder = case.get("textBuilder")
+    if not isinstance(builder, dict):
+        raise AssertionError(f"{case['id']}: text or textBuilder is required")
+    pattern = str(builder.get("pattern", ""))
+    repeat = int(builder.get("repeat", 1))
+    separator = str(builder.get("separator", ""))
+    return str(builder.get("prefix", "")) + separator.join([pattern] * repeat) + str(builder.get("suffix", ""))
+
+
+def _sentence_units(segmenter: object, text: str) -> list[str]:
+    starts = [0, *segmenter.find_sentence_splits(text)]
+    ends = [*starts[1:], len(text)]
+    return [text[start:end].strip() for start, end in zip(starts, ends) if text[start:end].strip()]
 
 
 class PcmSilenceShortenerTests(unittest.TestCase):
@@ -23,6 +58,33 @@ class PcmSilenceShortenerTests(unittest.TestCase):
             offset += length
         output.extend(shortener.feed(pcm[offset:]))
         output.extend(shortener.finish())
+        return bytes(output)
+
+    def _process_segments(
+        self,
+        mode: str,
+        segments: list[bytes],
+        chunks: list[list[int]] | None = None,
+    ) -> bytes:
+        shortener = self.processing.create_pcm_silence_shortener(mode, 1000)
+        if shortener is None:
+            return b"".join(segments)
+        output = bytearray()
+        chunks = chunks or [[] for _segment in segments]
+        for segment_index, segment in enumerate(segments):
+            offset = 0
+            for length in chunks[segment_index]:
+                output.extend(shortener.feed(segment[offset : offset + length]))
+                offset += length
+            output.extend(shortener.feed(segment[offset:]))
+            if segment_index < len(segments) - 1:
+                output.extend(
+                    shortener.flush_boundary(
+                        shortenPause=mode == self.processing.PAUSE_MODE_SHORTEN_ALL,
+                    )
+                )
+            else:
+                output.extend(shortener.finish())
         return bytes(output)
 
     def test_three_pause_modes(self) -> None:
@@ -72,6 +134,50 @@ class PcmSilenceShortenerTests(unittest.TestCase):
         pcm = _pcm(700, 700, 0, 0)
         self.assertEqual(b"", shortener.feed(pcm))
         self.assertEqual(pcm, shortener.finish())
+
+    def test_incomplete_audible_block_is_flushed_at_hidden_boundary(self) -> None:
+        first = _pcm(700, 800, 900, 1000)
+        second = _pcm(-700, -800, -900, -1000)
+        for mode in (
+            self.processing.PAUSE_MODE_SHORTEN_END_ONLY,
+            self.processing.PAUSE_MODE_SHORTEN_ALL,
+        ):
+            with self.subTest(mode=mode):
+                shortener = self.processing.create_pcm_silence_shortener(mode, 1000)
+                self.assertIsNotNone(shortener)
+                self.assertEqual(b"", shortener.feed(first))
+                self.assertEqual(
+                    first,
+                    shortener.flush_boundary(
+                        shortenPause=mode == self.processing.PAUSE_MODE_SHORTEN_ALL,
+                    ),
+                )
+                self.assertEqual(b"", shortener.feed(second))
+                self.assertEqual(second, shortener.finish())
+
+    def test_hidden_boundary_chunking_does_not_change_output(self) -> None:
+        segments = [
+            _pcm(*([0] * 7), *([700] * 4), *([0] * 43), 900),
+            _pcm(1000, *([0] * 41), *([-800] * 4), *([0] * 52)),
+        ]
+        for mode in (
+            self.processing.PAUSE_MODE_SHORTEN_END_ONLY,
+            self.processing.PAUSE_MODE_SHORTEN_ALL,
+        ):
+            whole = self._process_segments(mode, segments)
+            for segment_index, segment in enumerate(segments):
+                for split_offset in range(len(segment) + 1):
+                    with self.subTest(mode=mode, segment=segment_index, single_split=split_offset):
+                        chunks = [[], []]
+                        chunks[segment_index] = [split_offset]
+                        self.assertEqual(whole, self._process_segments(mode, segments, chunks))
+            for chunk_size in (1, 2, 3, 5, 17, 64):
+                with self.subTest(mode=mode, chunk_size=chunk_size):
+                    chunks = [
+                        [chunk_size] * (len(segment) // chunk_size)
+                        for segment in segments
+                    ]
+                    self.assertEqual(whole, self._process_segments(mode, segments, chunks))
 
     def test_end_only_preserves_hidden_boundary_and_shortens_final_end(self) -> None:
         shortener = self.processing.create_pcm_silence_shortener(
@@ -123,11 +229,12 @@ class PcmLeadBufferTests(unittest.TestCase):
         self.assertEqual(b"\x05\x06", lead.feed(b"\x05\x06"))
 
 
-class TextSegmenterLatencyTests(unittest.TestCase):
+class TextSegmenterTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.processing = load_driver_module("speech_processing")
         cls.segmenter = cls.processing.DEFAULT_TEXT_SEGMENTER
+        cls.corpus = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
 
     def test_medium_fast_first_segmentation_is_opt_in(self) -> None:
         text = (
@@ -151,6 +258,72 @@ class TextSegmenterLatencyTests(unittest.TestCase):
         self.assertGreaterEqual(len(segments), 3)
         self.assertLessEqual(len(segments[0]), self.processing.FAST_SOFT_PHRASE_SEGMENT_MAX_CHARS)
         self.assertTrue(any(len(segment) > self.processing.FAST_SOFT_PHRASE_SEGMENT_MAX_CHARS for segment in segments[1:]))
+
+    def test_corpus_schema(self) -> None:
+        self.assertEqual(SUPPORTED_SCHEMA_VERSION, self.corpus.get("schemaVersion"))
+        self.assertIsInstance(self.corpus.get("source"), dict)
+        cases = self.corpus.get("cases")
+        self.assertIsInstance(cases, list)
+        self.assertTrue(cases)
+        seen_ids: set[str] = set()
+        for case in cases:
+            self.assertIsInstance(case, dict)
+            case_id = case.get("id")
+            self.assertIsInstance(case_id, str)
+            self.assertTrue(case_id)
+            self.assertNotIn(case_id, seen_ids, f"Duplicate corpus case ID: {case_id}")
+            seen_ids.add(case_id)
+            self.assertIn(case.get("category"), REQUIRED_CATEGORIES, case_id)
+            operation = case.get("operation")
+            self.assertIn(operation, SUPPORTED_OPERATIONS, case_id)
+            self.assertNotEqual("text" in case, "textBuilder" in case, case_id)
+            _materialize_text(case)
+            if operation == "sentenceUnits":
+                expected = case.get("expected")
+                self.assertIsInstance(expected, list, case_id)
+                self.assertTrue(all(isinstance(segment, str) and segment for segment in expected), case_id)
+            else:
+                self.assertIsInstance(case.get("assert"), dict, case_id)
+
+    def test_corpus_cases(self) -> None:
+        for case in self.corpus["cases"]:
+            with self.subTest(case=case["id"]):
+                text = _materialize_text(case)
+                operation = case["operation"]
+                if operation == "sentenceUnits":
+                    self.assertEqual(case["expected"], _sentence_units(self.segmenter, text))
+                elif operation == "latencySegments":
+                    segments = list(
+                        self.segmenter.iter_text_segments_for_latency(text, bool(case.get("fastFirstSegment", False)))
+                    )
+                    self._assert_latency_segments(case, text, segments)
+                else:
+                    self.fail(f"Unknown corpus operation: {operation}")
+
+    def _assert_latency_segments(self, case: dict[str, object], text: str, segments: list[str]) -> None:
+        assertions = case["assert"]
+        self.assertGreaterEqual(len(segments), assertions.get("minSegmentCount", 1))
+        if "maxSegmentLength" in assertions:
+            self.assertLessEqual(max(map(len, segments)), assertions["maxSegmentLength"])
+        if "firstMaxLength" in assertions:
+            self.assertLessEqual(len(segments[0]), assertions["firstMaxLength"])
+        if assertions.get("preservesNonWhitespace"):
+            compact = lambda value: "".join(value.split())
+            self.assertEqual(compact(text), compact("".join(segments)))
+        forbidden_starts = tuple(assertions.get("forbidSegmentStartCharacters", []))
+        forbidden_ends = tuple(assertions.get("forbidSegmentEndCharacters", []))
+        for segment in segments:
+            self.assertTrue(segment)
+            if forbidden_starts:
+                self.assertNotIn(segment[0], forbidden_starts)
+            if forbidden_ends:
+                self.assertNotIn(segment[-1], forbidden_ends)
+            if assertions.get("noLeadingCombiningMark"):
+                self.assertFalse(unicodedata.category(segment[0]).startswith("M"))
+
+    def test_corpus_covers_requested_categories(self) -> None:
+        categories = {case["category"] for case in self.corpus["cases"]}
+        self.assertTrue(REQUIRED_CATEGORIES <= categories)
 
 
 class ShortAudioCacheKeyTests(unittest.TestCase):
