@@ -100,6 +100,8 @@ Google-TTS-For-NVDA/
 │  │  │  ├─ bindings_main.js / .wasm
 │  │  │  ├─ offscreen_compiled.js
 │  │  │  ├─ voices.json
+│  │  │  ├─ LICENSE          Chromium WASM TTS BSD-3-Clause license
+│  │  │  ├─ EIGEN_LICENSE    Eigen dependency Apache-2.0 license
 │  │  │  └─ streaming_worklet_processor.js
 │  │  └─ websocketClientRepo/   Vendored websocket-client library
 │  ├─ globalPlugins/googleTtsForNvda/
