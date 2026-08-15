@@ -4,10 +4,14 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
 import re
+import shutil
 import struct
 import string
+import subprocess
 import sys
+import tempfile
 import unicodedata
 from pathlib import Path
 
@@ -21,6 +25,7 @@ DEFAULT_NVDA_LOCALE_DIRS = (
 	Path(r"C:\Program Files\NVDA\locale"),
 	Path(r"C:\Program Files (x86)\NVDA\locale"),
 )
+POEDIT_MSGMERGE_RELATIVE_PATH = Path("Poedit") / "GettextTools" / "bin" / "msgmerge.exe"
 MANIFEST_KEYS = ("summary", "description", "changelog")
 PLACEHOLDER_RE = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}")
 TRANSLATABLE_SOURCE_DIRS = (
@@ -145,6 +150,17 @@ def _translatable_source_messages() -> dict[str, list[str]]:
 	return messages
 
 
+def _manifest_version() -> str:
+	text = MANIFEST_SOURCE.read_text(encoding="utf-8")
+	match = re.search(r"^version\s*=\s*([^\r\n#]+)", text, re.MULTILINE)
+	if match is None:
+		raise ValueError(f"Manifest version could not be read from {MANIFEST_SOURCE}")
+	version = match.group(1).strip().strip('"\'')
+	if not version:
+		raise ValueError(f"Manifest version is empty in {MANIFEST_SOURCE}")
+	return version
+
+
 def _po_escape(value: str) -> str:
 	return value.replace("\\", "\\\\").replace('"', '\\"').replace("\t", "\\t").replace("\n", "\\n")
 
@@ -166,6 +182,7 @@ def _append_po_string(lines: list[str], keyword: str, value: str) -> None:
 
 def _write_pot(messages: dict[str, list[str]]) -> Path:
 	POT_PATH.parent.mkdir(parents=True, exist_ok=True)
+	version = _manifest_version()
 	lines = [
 		"# Google TTS For NVDA translation template.",
 		"# Copyright (C) 2026 Google TTS For NVDA contributors",
@@ -173,7 +190,7 @@ def _write_pot(messages: dict[str, list[str]]) -> Path:
 		"#",
 		'msgid ""',
 		'msgstr ""',
-		'"Project-Id-Version: Google TTS For NVDA 0.3\\n"',
+		f'"Project-Id-Version: Google TTS For NVDA {_po_escape(version)}\\n"',
 		'"Report-Msgid-Bugs-To: \\n"',
 		'"POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\\n"',
 		'"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\\n"',
@@ -193,6 +210,106 @@ def _write_pot(messages: dict[str, list[str]]) -> Path:
 	with POT_PATH.open("w", encoding="utf-8", newline="\n") as stream:
 		stream.write("\n".join(lines) + "\n")
 	return POT_PATH
+
+
+def _find_msgmerge(configured_path: Path | None = None) -> Path | None:
+	if configured_path is not None:
+		path = configured_path.expanduser().resolve()
+		return path if path.is_file() else None
+	found = shutil.which("msgmerge")
+	if found:
+		return Path(found).resolve()
+	candidates: list[Path] = []
+	for variable_name in ("ProgramFiles", "ProgramFiles(x86)"):
+		root = os.environ.get(variable_name)
+		if root:
+			candidates.append(Path(root) / POEDIT_MSGMERGE_RELATIVE_PATH)
+	local_app_data = os.environ.get("LOCALAPPDATA")
+	if local_app_data:
+		candidates.append(Path(local_app_data) / "Programs" / POEDIT_MSGMERGE_RELATIVE_PATH)
+	for path in candidates:
+		if path.is_file():
+			return path.resolve()
+	return None
+
+
+def _purge_obsolete_po_entries(text: str) -> tuple[str, int]:
+	paragraphs = re.split(r"(?:\r?\n){2,}", text.strip())
+	kept: list[str] = []
+	removed = 0
+	for paragraph in paragraphs:
+		lines = paragraph.splitlines()
+		if any(line.startswith(("#~ msgctxt ", "#~ msgid ")) for line in lines):
+			removed += 1
+			continue
+		kept.append(paragraph)
+	return "\n\n".join(kept).rstrip() + "\n", removed
+
+
+def _update_po_from_template(
+	language_dir: Path,
+	msgmerge_path: Path,
+	required_messages: dict[str, list[str]],
+) -> tuple[int, int, int]:
+	po_path = language_dir / "LC_MESSAGES" / "nvda.po"
+	old_catalog = _parse_po(po_path, include_untranslated=True)
+	old_msgids = set(old_catalog) - {""}
+	required_msgids = set(required_messages)
+	temporary_path: Path | None = None
+	try:
+		with tempfile.NamedTemporaryFile(
+			mode="w",
+			encoding="utf-8",
+			dir=po_path.parent,
+			prefix=".nvda-po-update-",
+			suffix=".tmp",
+			delete=False,
+		) as temporary_stream:
+			temporary_path = Path(temporary_stream.name)
+		result = subprocess.run(
+			[
+				str(msgmerge_path),
+				"--no-fuzzy-matching",
+				"--output-file",
+				str(temporary_path),
+				str(po_path),
+				str(POT_PATH),
+			],
+			capture_output=True,
+			text=True,
+			encoding="utf-8",
+			errors="replace",
+			check=False,
+		)
+		if result.returncode != 0:
+			detail = (result.stderr or result.stdout).strip() or f"exit code {result.returncode}"
+			raise RuntimeError(f"msgmerge failed for {language_dir.name}: {detail}")
+		merged_text = temporary_path.read_text(encoding="utf-8-sig")
+		merged_text, removed_count = _purge_obsolete_po_entries(merged_text)
+		temporary_path.write_text(merged_text, encoding="utf-8", newline="\n")
+		merged_catalog = _parse_po(temporary_path, include_untranslated=True)
+		actual_msgids = set(merged_catalog) - {""}
+		if actual_msgids != required_msgids:
+			missing = sorted(required_msgids - actual_msgids)
+			unexpected = sorted(actual_msgids - required_msgids)
+			raise RuntimeError(
+				f"Merged catalog verification failed for {language_dir.name}: "
+				f"missing={len(missing)}, unexpected={len(unexpected)}"
+			)
+		new_msgids = required_msgids - old_msgids
+		nonempty_new = sorted(msgid for msgid in new_msgids if merged_catalog.get(msgid, ""))
+		if nonempty_new:
+			raise RuntimeError(
+				f"Merged catalog verification failed for {language_dir.name}: "
+				f"{len(nonempty_new)} new source strings received non-empty translations"
+			)
+		temporary_path.replace(po_path)
+		temporary_path = None
+		preserved_count = len(required_msgids & old_msgids)
+		return preserved_count, len(new_msgids), removed_count
+	finally:
+		if temporary_path is not None:
+			temporary_path.unlink(missing_ok=True)
 
 
 def _format_set(message: str) -> set[str]:
@@ -589,16 +706,20 @@ def _prompt_checks(default_checks: set[str]) -> set[str]:
 	return {numbered_checks[mode - 2][0]}
 
 
-def _interactive_options(default_checks: set[str]) -> tuple[list[str] | None, set[str], bool, bool]:
+def _interactive_options(default_checks: set[str]) -> tuple[list[str] | None, set[str], bool, bool, bool]:
 	languages = _addon_languages()
-	print("Google TTS For NVDA translation checker")
+	print("Google TTS For NVDA translation tools")
 	print("")
 	print("Task:")
 	print("  1. Check or build translations")
 	print("  2. Generate source string template")
-	task = _prompt_number("Choose 1 or 2: ", 1, 2)
+	print("  3. Update locale PO files from the source template")
+	task = _prompt_number("Choose 1-3: ", 1, 3)
 	if task == 2:
-		return None, set(default_checks), True, True
+		return None, set(default_checks), True, True, False
+	if task == 3:
+		selected_languages = _prompt_languages(languages) if languages else [_prompt_language_code()]
+		return selected_languages, set(default_checks), False, False, True
 
 	selected_languages = _prompt_languages(languages) if languages else [_prompt_language_code()]
 	checks = _prompt_checks(default_checks)
@@ -608,11 +729,11 @@ def _interactive_options(default_checks: set[str]) -> tuple[list[str] | None, se
 	print("  1. Check only")
 	print("  2. Build generated files")
 	action = _prompt_number("Choose 1 or 2: ", 1, 2)
-	return selected_languages, checks, action == 1, False
+	return selected_languages, checks, action == 1, False, False
 
 
 def main() -> int:
-	parser = argparse.ArgumentParser(description="Build and check Google TTS For NVDA translations.")
+	parser = argparse.ArgumentParser(description="Update, build, and check Google TTS For NVDA translations.")
 	parser.add_argument("--menu", action="store_true", help="Show an interactive numbered menu.")
 	parser.add_argument("--check", action="store_true", help="Only check translations; do not write generated files.")
 	parser.add_argument(
@@ -621,15 +742,25 @@ def main() -> int:
 		help="Generate locale\\nvda.pot with the current English source strings and exit.",
 	)
 	parser.add_argument(
+		"--update-po",
+		action="store_true",
+		help="Regenerate locale\\nvda.pot and merge it into selected or all locale PO files.",
+	)
+	parser.add_argument(
+		"--msgmerge",
+		type=Path,
+		help="Path to msgmerge for --update-po. Defaults to PATH or a standard Poedit installation.",
+	)
+	parser.add_argument(
 		"-l",
 		"--language",
 		action="append",
-		help="Only build or check this language code. Can be used more than once.",
+		help="Only update, build, or check this language code. Can be used more than once.",
 	)
 	parser.add_argument(
 		"--all-languages",
 		action="store_true",
-		help="Build or check every add-on locale without opening the interactive menu.",
+		help="Update, build, or check every add-on locale without opening the interactive menu.",
 	)
 	parser.add_argument(
 		"--nvda-locale-dir",
@@ -663,12 +794,62 @@ def main() -> int:
 	selected_languages = None if args.all_languages else args.language
 	check_only = args.check
 	extract_template = args.extract_template
-	if args.menu or len(sys.argv) == 1:
-		selected_languages, checks, check_only, extract_template = _interactive_options(checks)
+	update_po = args.update_po
+	using_menu = args.menu or len(sys.argv) == 1
+	if using_menu:
+		selected_languages, checks, check_only, extract_template, update_po = _interactive_options(checks)
+	if update_po:
+		if check_only:
+			parser.error("--update-po cannot be combined with --check.")
+		if extract_template:
+			parser.error("--update-po cannot be combined with --extract-template.")
+		if not using_menu and not args.all_languages and selected_languages is None:
+			parser.error("--update-po requires --language or --all-languages.")
+	elif args.msgmerge is not None:
+		parser.error("--msgmerge can only be used with --update-po.")
 
 	if extract_template:
 		template_path = _write_pot(_translatable_source_messages())
 		print(f"Updated source string template: {template_path.relative_to(ADDON_DIR)}")
+		return 0
+	if update_po:
+		required_messages = _translatable_source_messages()
+		template_path = _write_pot(required_messages)
+		print(f"Updated source string template: {template_path.relative_to(ADDON_DIR)}")
+		language_dirs, selection_errors = _language_dirs(selected_languages)
+		if selection_errors:
+			for error in selection_errors:
+				print(f"[ERROR] {error}")
+			return 1
+		msgmerge_path = _find_msgmerge(args.msgmerge)
+		if msgmerge_path is None:
+			print(
+				"[ERROR] msgmerge was not found. Install GNU gettext or Poedit, add msgmerge to PATH, "
+				"or pass --msgmerge with its full path."
+			)
+			return 1
+		print(f"msgmerge: {msgmerge_path}")
+		print("")
+		all_errors: list[str] = []
+		for language_dir in language_dirs:
+			try:
+				preserved, added, removed = _update_po_from_template(
+					language_dir,
+					msgmerge_path,
+					required_messages,
+				)
+			except (OSError, RuntimeError) as exc:
+				all_errors.append(str(exc))
+				continue
+			po_path = language_dir / "LC_MESSAGES" / "nvda.po"
+			print(f"Updated {po_path.relative_to(ADDON_DIR)}")
+			print(f"  Preserved current source strings: {preserved}")
+			print(f"  Added untranslated source strings: {added}")
+			print(f"  Removed obsolete entries: {removed}")
+		if all_errors:
+			for error in all_errors:
+				print(f"[ERROR] {error}")
+			return 1
 		return 0
 
 	locale_dirs = args.nvda_locale_dir or list(DEFAULT_NVDA_LOCALE_DIRS)

@@ -701,13 +701,14 @@ When modifying `voiceManager.py` or any UI:
 - Keep localized `readme.html` terminology aligned with the locale's `nvda.po` UI translations and, where a setting label comes from NVDA itself, with NVDA's own locale translation.
 - `languageSort.json` affects only Voice Manager display order for translated language names; it must not change displayed names, package IDs, catalog data, download behavior, removal behavior, or runtime JSON.
 - When source strings change, refresh the template and validate/build through `build_i18n.py` as described in `TRANSLATING.md`.
-- `googleTtsForNvda/locale/nvda.pot` is a locally generated, Git-ignored template. A fresh clone is expected not to contain it. Translators must generate it with `build_i18n.py --extract-template`, update the existing locale `.po` from that template, and must not commit the generated `.pot` file.
+- `googleTtsForNvda/locale/nvda.pot` is a locally generated, Git-ignored template. A fresh clone is expected not to contain it. Translators may update selected existing locale `.po` files with `build_i18n.py --update-po` plus `--language <language>` or `--all-languages`, or generate only the template with `--extract-template` for a translation editor; the generated `.pot` file must not be committed.
 - `build.bat` and `build.sh` must not run `build_i18n.py`; i18n is a separate explicit workflow. Release/package work that changes localized output should run `build_i18n.py` before invoking the package build script.
 - Generated `.mo` files are build outputs. Do not hand-edit them; update `nvda.po` and rebuild.
 - Keep all-locale/default choices first in the interactive i18n menu so blind translators can choose the broad safe option quickly.
 - Keep both `C:\Program Files\NVDA\locale` and `C:\Program Files (x86)\NVDA\locale` in NVDA locale discovery because supported NVDA versions can be x64 or older x86 installs.
 - Translation tool code map:
-  - `build_i18n.py` source extraction and POT writing: `_translatable_source_messages()`, `_manifest_values()`, and `_write_pot()`.
+  - `build_i18n.py` source extraction and POT writing: `_translatable_source_messages()`, `_manifest_version()`, `_manifest_values()`, and `_write_pot()`.
+  - `build_i18n.py` locale PO template updates: `_find_msgmerge()`, `_purge_obsolete_po_entries()`, `_update_po_from_template()`, `_prompt_languages()`, `--update-po`, `--language`, `--all-languages`, and `--msgmerge`.
   - `build_i18n.py` `.po` parsing and validation: `_parse_po()`, `_check_catalog()`, `_check_language_files()`, `_check_language_sort_file()`, `_parse_checks()`, and `_print_run_summary()`.
   - `build_i18n.py` generated output writers: `_compile_mo()` and `_write_translated_manifest()`.
   - `build_i18n.py` interactive menu: `_prompt_languages()`, `_prompt_checks()`, `_interactive_options()`, and `main()`.

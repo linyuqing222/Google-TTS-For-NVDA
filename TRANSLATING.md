@@ -35,7 +35,7 @@ Each translation part affects a different place in the add-on:
 
 ## What the i18n script does
 
-`build_i18n.py` validates translations, extracts the English source-string template, compiles `.po` files into `.mo`, and writes localized `manifest.ini` files. It does not create translated documentation or `languageSort.json`; those files are written by translators and then validated by the script.
+`build_i18n.py` validates translations, extracts the English source-string template, updates selected locale `.po` files from that template, compiles `.po` files into `.mo`, and writes localized `manifest.ini` files. It does not create translated documentation or `languageSort.json`; those files are written by translators and then validated by the script.
 
 ## Translation quality
 
@@ -142,7 +142,45 @@ When Vietnamese text names standard dialog buttons, use the same labels NVDA use
 
 ## Checking and building
 
-After adding or changing user-facing source strings, regenerate the source-string template:
+After adding or changing user-facing source strings, update one translation from the current source template with:
+
+```powershell
+python build_i18n.py --update-po --language <language>
+```
+
+On WSL/Linux, use:
+
+```bash
+python3 build_i18n.py --update-po --language <language>
+```
+
+To update every existing add-on translation in one operation, use:
+
+```powershell
+python build_i18n.py --update-po --all-languages
+```
+
+```bash
+python3 build_i18n.py --update-po --all-languages
+```
+
+You may also repeat `--language` to update several specific locales without updating all of them:
+
+```powershell
+python build_i18n.py --update-po --language uk --language ru
+```
+
+This command regenerates `locale/nvda.pot`, keeps translations whose English source string still matches exactly, adds every new source string with an empty `msgstr`, refreshes source references, and removes obsolete entries, including old `#~` blocks. It does not build `nvda.mo` or a localized manifest because the contributor must translate the new empty strings first. The template's `Project-Id-Version` is read from `googleTtsForNvda/manifest.ini`.
+
+The update action requires GNU `msgmerge`. The script looks on `PATH` and in standard Poedit installation folders on Windows. If necessary, pass its full path explicitly:
+
+```powershell
+python build_i18n.py --update-po --language <language> --msgmerge "C:\Program Files\Poedit\GettextTools\bin\msgmerge.exe"
+```
+
+Fuzzy matching is intentionally disabled. A changed English source string is treated as a new untranslated string instead of reusing a translation that may no longer be correct.
+
+To regenerate only the source-string template for manual use in a translation editor, run:
 
 ```powershell
 python build_i18n.py --extract-template
@@ -160,7 +198,7 @@ The generated template is written to:
 googleTtsForNvda/locale/nvda.pot
 ```
 
-`nvda.pot` is intentionally ignored by Git, so it is not present in a fresh clone and should not be included in a pull request. Generate it locally, then use your translation editor's **Update from POT file** command to merge its current source strings into the existing `nvda.po`. Do not replace an existing translated `.po` file with the `.pot` file, because that would discard its translations.
+`nvda.pot` is intentionally ignored by Git, so it is not present in a fresh clone and should not be included in a pull request. When using a translation editor instead of `--update-po`, generate the template locally and use the editor's **Update from POT file** command to merge it into the existing `nvda.po`. Do not replace an existing translated `.po` file with the `.pot` file, because that would discard its translations.
 
 After editing a translation, check it first:
 
@@ -182,7 +220,7 @@ python build_i18n.py --language <language>
 python3 build_i18n.py --language <language>
 ```
 
-In non-interactive mode, `--all-languages` checks or builds every language folder currently present in:
+In non-interactive mode, `--all-languages` updates, checks, or builds every language folder currently present in:
 
 ```text
 googleTtsForNvda/locale
@@ -202,7 +240,7 @@ python build_i18n.py
 python3 build_i18n.py
 ```
 
-The menu opens by default when no arguments are provided. `python build_i18n.py --menu` is still accepted when you want to request it explicitly. The menu lists broad choices first: all add-on locales before individual locales, and default/all checks before individual check categories. It also lets you choose check-only or build mode and has a separate option to generate the source string template.
+The menu opens by default when no arguments are provided. `python build_i18n.py --menu` is still accepted when you want to request it explicitly. The menu lists broad choices first: all add-on locales before individual locales, and default/all checks before individual check categories. It lets you choose check-only or build mode, generate only the source string template, or update either one locale PO or all locale PO files from the current template.
 
 ## Check categories
 

@@ -86,7 +86,7 @@ msgstr "Se produjo un error del sistema de archivos al gestionar los paquetes de
 
 #: globalPlugins/googleTtsForNvda/voiceManager.py:1392
 msgid "A voice package operation is still running."
-msgstr "Todavía hay una operación de paquetes de voz en curso."
+msgstr "Todavía hay una operación con paquetes de voz en curso."
 
 #: globalPlugins/googleTtsForNvda/settings.py:406
 #: globalPlugins/googleTtsForNvda/settings.py:411
@@ -268,7 +268,7 @@ msgstr "Versión actual de Google TTS Para NVDA: {version}. La búsqueda automá
 
 #: globalPlugins/googleTtsForNvda/updateGui.py:141
 msgid "Current Google TTS For NVDA version: {version}. Automatic update checks are on. Google TTS For NVDA will check once the next time NVDA starts. You can also check manually."
-msgstr "Versión actual de Google TTS Para NVDA: {version}. La búsqueda automática de actualizaciones está activada. Google TTS Para NVDA buscará una vez la próxima vez que se inicie NVDA. También puedes buscar actualizaciones manualmente."
+msgstr "Versión actual de Google TTS Para NVDA: {version}. La búsqueda automática de actualizaciones está activada. Google TTS Para NVDA realizará una búsqueda la próxima vez que se inicie NVDA. También puedes buscar actualizaciones manualmente."
 
 #: globalPlugins/googleTtsForNvda/updateGui.py:135
 msgid "Current Google TTS For NVDA version: {version}. Checking for updates now."
@@ -311,7 +311,7 @@ msgid ""
 msgstr ""
 "¿Descargar los paquetes de voz necesarios?\n"
 "Seleccionados: {selected}\n"
-"Descargar también los paquetes que necesita la selección: {dependencies}"
+"Descargar también los paquetes necesarios para la selección: {dependencies}"
 
 #: globalPlugins/googleTtsForNvda/updateGui.py:199
 msgid ""
@@ -800,7 +800,7 @@ msgstr ""
 #: synthDrivers/googleTtsForNvda/bridge.py:1188
 #: synthDrivers/googleTtsForNvda/bridge.py:997
 msgid "No supported Chromium browser runtime was found. Install Google Chrome, Microsoft Edge, or Brave, or set CHROME_PATH, EDGE_PATH, or BRAVE_PATH to a browser executable."
-msgstr "No se encontró ningún entorno de ejecución compatible del navegador Chromium. Instala Google Chrome, Microsoft Edge o Brave, o establece CHROME_PATH, EDGE_PATH o BRAVE_PATH en el ejecutable de un navegador."
+msgstr "No se encontró ningún entorno de ejecución compatible del navegador Chromium. Instala Google Chrome, Microsoft Edge o Brave, o configura CHROME_PATH, EDGE_PATH o BRAVE_PATH con la ruta del ejecutable de un navegador."
 
 #: globalPlugins/googleTtsForNvda/voiceManager.py:1062
 msgid "No voice packages are checked for download."
@@ -842,7 +842,7 @@ msgstr "Desactivado. Google TTS Para NVDA iniciará el entorno de ejecución del
 
 #: globalPlugins/googleTtsForNvda/settings.py:506
 msgid "On. After you press OK or Apply, Google TTS For NVDA can keep the browser runtime ready in the background. This may use more memory and keep runtime files open until you turn it off or exit NVDA."
-msgstr "Activado. Después de pulsar Aceptar o Aplicar, Google TTS Para NVDA puede mantener preparado en segundo plano el entorno de ejecución del navegador. Esto puede utilizar más memoria y mantener abiertos archivos del entorno de ejecución hasta que desactives la opción o salgas de NVDA."
+msgstr "Activado. Después de pulsar Aceptar o Aplicar, Google TTS Para NVDA puede mantener preparado en segundo plano el entorno de ejecución del navegador. Esto puede aumentar el uso de memoria y mantener abiertos archivos del entorno de ejecución hasta que desactives la opción o salgas de NVDA."
 
 #: globalPlugins/googleTtsForNvda/settings.py:503
 msgid "On. Google TTS For NVDA is the current synthesizer, so no separate background browser runtime will be started."
@@ -1172,8 +1172,8 @@ msgid "Use automatic language profiles"
 msgstr "Utilizar perfiles de idioma automáticos"
 
 #: manifest.ini:description
-msgid "Use Google's WASM text-to-speech voices locally through a supported Chromium browser runtime such as Google Chrome, Microsoft Edge, or Brave as an NVDA synthesizer."
-msgstr "Permite utilizar localmente las voces de texto a voz WASM de Google a través de un entorno de ejecución compatible del navegador Chromium, como Google Chrome, Microsoft Edge o Brave, y emplearlas como sintetizador de NVDA."
+msgid "Use Google's WASM text-to-speech voices locally through a supported Chromium browser runtime such as Google Chrome, Microsoft Edge, or Brave as an NVDA synthesizer. Google TTS For NVDA is an independent, open-source accessibility project. It is not affiliated with, sponsored by, or endorsed by Google LLC. Google is a trademark of Google LLC."
+msgstr "Permite utilizar localmente las voces de texto a voz de Google basadas en WASM mediante el entorno de ejecución de un navegador Chromium compatible, como Google Chrome, Microsoft Edge o Brave, y emplearlas como sintetizador de NVDA. Google TTS Para NVDA es un proyecto de accesibilidad independiente y de código abierto. No está afiliado a Google LLC ni cuenta con su patrocinio o respaldo. Google es una marca comercial de Google LLC."
 
 #: globalPlugins/googleTtsForNvda/settings.py:320
 msgid "Use this language profile"
@@ -1187,15 +1187,15 @@ msgid ""
 "- Increased default speech loudness and kept volume steadier without abnormal rises and falls. The Volume setting remains proportional. Distortion in some male voices comes from the original WASM TTS engine and is not addressed by this change.\n"
 "- Improved recovery from failures in the Chromium browser runtime, WASM TTS engine, and NVDA audio output; prevented Keep Google TTS browser runtime ready in the background from retaining unhealthy runtimes; and reduced conflicts with other add-ons.\n"
 "- Updated the bundled WASM TTS engine to version 20260806.1.\n"
-"- Updated translations to match version 1.0."
+"- Added Spanish and Brazilian Portuguese translations, and rewrote the Simplified Chinese translation using official NVDA terminology."
 msgstr ""
 "Versión 1.0:\n"
-"- Se mejoró la respuesta al leer textos medianos y largos, con un inicio más rápido, un búfer de audio más fluido y la reutilización del audio terminado que se conserva temporalmente en la RAM.\n"
+"- Se mejoró la respuesta al leer textos medianos y largos, con un inicio más rápido, un almacenamiento en búfer de audio más fluido y la reutilización del audio terminado que se conserva temporalmente en la RAM.\n"
 "- Se mejoraron las divisiones de frases y expresiones multilingües y la función Utilizar perfiles de idioma automáticos mediante datos oficiales de Unicode 17.0 y CLDR 48.2.\n"
 "- Se aumentó el volumen predeterminado de la voz y se mantuvo más estable, sin subidas ni bajadas anormales. La opción Volumen sigue siendo proporcional. La distorsión de algunas voces masculinas procede del motor WASM TTS original y este cambio no la corrige.\n"
-"- Se mejoró la recuperación tras fallos del entorno de ejecución del navegador Chromium, del motor WASM TTS y de la salida de audio de NVDA; se impidió que Mantener preparado en segundo plano el entorno de ejecución del navegador de Google TTS conservara entornos dañados; y se redujeron los conflictos con otros complementos.\n"
+"- Se mejoró la recuperación tras fallos del entorno de ejecución del navegador Chromium, del motor WASM TTS y de la salida de audio de NVDA; se impidió que Mantener preparado en segundo plano el entorno de ejecución del navegador de Google TTS conservara entornos en mal estado; y se redujeron los conflictos con otros complementos.\n"
 "- Se actualizó el motor WASM TTS incluido a la versión 20260806.1.\n"
-"- Se actualizaron las traducciones para la versión 1.0."
+"- Se añadieron las traducciones al español y al portugués de Brasil, y se reescribió la traducción al chino simplificado con la terminología oficial de NVDA."
 
 #: globalPlugins/googleTtsForNvda/voiceManager.py:115
 msgid "Vietnamese"
@@ -1211,13 +1211,13 @@ msgid ""
 msgstr ""
 "Las preferencias del diccionario por voces no están disponibles mientras los perfiles de idioma automáticos están activados.\n"
 "\n"
-"Google TTS Para NVDA puede cambiar entre las variantes de varios perfiles mientras lee, por lo que NVDA no puede saber qué diccionario por voces de una sola variante debe editar.\n"
+"Google TTS Para NVDA puede cambiar entre las variantes de varios perfiles mientras lee, por lo que NVDA no puede saber qué diccionario por voces de una variante concreta debe editar.\n"
 "\n"
 "Abre la categoría Google TTS Para NVDA en Opciones de NVDA y desactiva los perfiles de idioma automáticos; después, vuelve a abrir Diccionario por Voces."
 
 #: globalPlugins/googleTtsForNvda/voiceManager.py:1368
 msgid "Voice package operation failed: {message}"
-msgstr "Falló la operación del paquete de voz: {message}"
+msgstr "Falló la operación con el paquete de voz: {message}"
 
 #: synthDrivers/googleTtsForNvda/voice_store.py:330
 #: synthDrivers/googleTtsForNvda/voice_store.py:339
