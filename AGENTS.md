@@ -83,6 +83,7 @@ Google-TTS-For-NVDA/
 ├─ googleTtsForNvda/
 │  ├─ manifest.ini
 │  ├─ buildInfo.json     Internal updater hotfix build metadata
+│  ├─ LICENSE            Packaged copy of the add-on's GPL-2.0 license
 │  ├─ synthDrivers/googleTtsForNvda/
 │  │  ├─ __init__.py        SynthDriver; NVDA integration and settings ring
 │  │  ├─ bridge.py          ChromeTtsBridge; HTTP server, browser lifecycle, CDP/WS
@@ -741,6 +742,7 @@ Compress-Archive -Path googleTtsForNvda\* -DestinationPath dist\googleTtsForNvda
 
 - `build.bat` is the release packaging entry point. It reads `version` from `googleTtsForNvda\manifest.ini`, cleans stale build artifacts and `__pycache__`, checks unresolved merge conflict markers, runs Python and JavaScript syntax checks, rejects `.zvoice` files in the source tree, packages `googleTtsForNvda\*` into `dist\googleTtsForNvda-<version>.nvda-addon`, and cleans `__pycache__` again before exit.
 - `build.sh` is the WSL/Linux equivalent entry point, kept in the repo root next to `build.bat`. It runs the same 7 steps in the same order and prints the same `[n/7]`/`[ERROR]` markers. When changing build steps, update both scripts together; `build.sh` cannot run or test NVDA/Chromium runtime behavior, only build/check/package.
+- Packaged license file code map: `LICENSE` repository GPL-2.0 copy; `googleTtsForNvda/LICENSE` packaged GPL-2.0 copy; `googleTtsForNvda/synthDrivers/googleTtsForNvda/WasmTtsEngine/<ENGINE_VERSION>/LICENSE` Chromium WASM TTS BSD-3-Clause copy; `googleTtsForNvda/synthDrivers/googleTtsForNvda/WasmTtsEngine/<ENGINE_VERSION>/EIGEN_LICENSE` Eigen Apache-2.0 copy.
 - Conflict-marker scan targets live in the root file lists in `build.bat` and `build.sh`; keep `build.sh` included in the Windows `build.bat` scan. The scan should match real Git conflict markers only: `<<<<<<<` at the start of a line with either end-of-line or following text, exactly `=======`, and `>>>>>>>` at the start of a line with either end-of-line or following text. Do not make every line beginning with `=` fail, because vendored/documentation files may use underline-style headings.
 - Keep the build steps ordered so syntax/package checks happen before packaging, and so `__pycache__` created by `compileall` is removed before packaging.
 - If adding a new source file type that can contain merge conflict markers or translatable/release content, update the `build.bat` conflict-marker scan patterns and the packaging/check instructions together, and mirror the same file-type list in `build.sh`.
