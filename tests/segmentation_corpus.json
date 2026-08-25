@@ -270,6 +270,94 @@
       }
     },
     {
+      "id": "es-es-inverted-punctuation",
+      "category": "locale-punctuation",
+      "locale": "es-ES",
+      "operation": "sentenceUnits",
+      "text": "¿Estás listo? ¡Sí, vamos!",
+      "expected": [
+        "¿Estás listo?",
+        "¡Sí, vamos!"
+      ]
+    },
+    {
+      "id": "fr-fr-abbreviation-monsieur",
+      "category": "abbreviation",
+      "locale": "fr-FR",
+      "operation": "sentenceUnits",
+      "text": "M. Dupont arrive. Madame est prête.",
+      "expected": [
+        "M. Dupont arrive.",
+        "Madame est prête."
+      ]
+    },
+    {
+      "id": "bg-bg-cyrillic-period",
+      "category": "locale-punctuation",
+      "locale": "bg-BG",
+      "operation": "sentenceUnits",
+      "text": "Това е първото изречение. Това е второто изречение.",
+      "expected": [
+        "Това е първото изречение.",
+        "Това е второто изречение."
+      ]
+    },
+    {
+      "id": "uk-ua-cyrillic-period",
+      "category": "locale-punctuation",
+      "locale": "uk-UA",
+      "operation": "sentenceUnits",
+      "text": "Це перше речення. Це друге речення.",
+      "expected": [
+        "Це перше речення.",
+        "Це друге речення."
+      ]
+    },
+    {
+      "id": "sat-ol-chiki-mucaad",
+      "category": "locale-punctuation",
+      "locale": "sat-IN",
+      "operation": "sentenceUnits",
+      "text": "ᱟᱨᱤᱛᱚᱞ ᱡᱚᱞᱟᱨ. ᱡᱟᱦᱟᱢ ᱥᱟᱨᱤᱛᱚᱞ.",
+      "expected": [
+        "ᱟᱨᱤᱛᱚᱞ ᱡᱚᱞᱟᱨ.",
+        "ᱡᱟᱦᱟᱢ ᱥᱟᱨᱤᱛᱚᱞ."
+      ]
+    },
+    {
+      "id": "mr-in-devanagari-danda",
+      "category": "locale-punctuation",
+      "locale": "mr-IN",
+      "operation": "sentenceUnits",
+      "text": "हे पहिले वाक्य आहे. हे दुसरे वाक्य आहे.",
+      "expected": [
+        "हे पहिले वाक्य आहे.",
+        "हे दुसरे वाक्य आहे."
+      ]
+    },
+    {
+      "id": "ur-pk-arabic-question-mark",
+      "category": "locale-punctuation",
+      "locale": "ur-PK",
+      "operation": "sentenceUnits",
+      "text": "کیا آپ تیار ہیں؟ جی ہاں، میں تیار ہوں.",
+      "expected": [
+        "کیا آپ تیار ہیں؟",
+        "جی ہاں، میں تیار ہوں."
+      ]
+    },
+    {
+      "id": "cs-cz-abbreviation",
+      "category": "abbreviation",
+      "locale": "cs-CZ",
+      "operation": "sentenceUnits",
+      "text": "Dr. Novák přijde. Prof. Svoboda je tady.",
+      "expected": [
+        "Dr. Novák přijde.",
+        "Prof. Svoboda je tady."
+      ]
+    },
+    {
       "id": "medium-latin-fast-first-segment-without-punctuation",
       "category": "long-sentence",
       "locale": "en-US",
@@ -279,6 +367,183 @@
       "assert": {
         "minSegmentCount": 2,
         "firstMaxLength": 90,
+        "maxSegmentLength": 240,
+        "preservesNonWhitespace": true
+      }
+    },
+    {
+      "id": "bn-in-bengali-danda",
+      "category": "locale-punctuation",
+      "locale": "bn-IN",
+      "operation": "sentenceUnits",
+      "text": "এটি প্রথম বাক্য। এটি দ্বিতীয় বাক্য।",
+      "expected": [
+        "এটি প্রথম বাক্য।",
+        "এটি দ্বিতীয় বাক্য।"
+      ]
+    },
+    {
+      "id": "ta-in-tamil-period",
+      "category": "locale-punctuation",
+      "locale": "ta-IN",
+      "operation": "sentenceUnits",
+      "text": "இது முதல் வாக்கியம். இது இரண்டாவது வாக்கியம்.",
+      "expected": [
+        "இது முதல் வாக்கியம்.",
+        "இது இரண்டாவது வாக்கியம்."
+      ]
+    },
+    {
+      "id": "te-in-telugu-period",
+      "category": "locale-punctuation",
+      "locale": "te-IN",
+      "operation": "sentenceUnits",
+      "text": "ఇది మొదటి వాక్యం. ఇది రెండవ వాక్యం.",
+      "expected": [
+        "ఇది మొదటి వాక్యం.",
+        "ఇది రెండవ వాక్యం."
+      ]
+    },
+    {
+      "id": "kn-in-kannada-period",
+      "category": "locale-punctuation",
+      "locale": "kn-IN",
+      "operation": "sentenceUnits",
+      "text": "ಇದು ಮೊದಲ ವಾಕ್ಯ. ಇದು ಎರಡನೇ ವಾಕ್ಯ.",
+      "expected": [
+        "ಇದು ಮೊದಲ ವಾಕ್ಯ.",
+        "ಇದು ಎರಡನೇ ವಾಕ್ಯ."
+      ]
+    },
+    {
+      "id": "ml-in-malayalam-period",
+      "category": "locale-punctuation",
+      "locale": "ml-IN",
+      "operation": "sentenceUnits",
+      "text": "ഇത് ആദ്യ വാക്യം. ഇത് രണ്ടാമത്തെ വാക്യം.",
+      "expected": [
+        "ഇത് ആദ്യ വാക്യം.",
+        "ഇത് രണ്ടാമത്തെ വാക്യം."
+      ]
+    },
+    {
+      "id": "gu-in-gujarati-period",
+      "category": "locale-punctuation",
+      "locale": "gu-IN",
+      "operation": "sentenceUnits",
+      "text": "આ પ્રથમ વાક્ય છે. આ બીજું વાક્ય છે.",
+      "expected": [
+        "આ પ્રથમ વાક્ય છે.",
+        "આ બીજું વાક્ય છે."
+      ]
+    },
+    {
+      "id": "pa-in-gurmukhi-period",
+      "category": "locale-punctuation",
+      "locale": "pa-IN",
+      "operation": "sentenceUnits",
+      "text": "ਇਹ ਪਹਿਲਾ ਵਾਕ ਹੈ. ਇਹ ਦੂਜਾ ਵਾਕ ਹੈ.",
+      "expected": [
+        "ਇਹ ਪਹਿਲਾ ਵਾਕ ਹੈ.",
+        "ਇਹ ਦੂਜਾ ਵਾਕ ਹੈ."
+      ]
+    },
+    {
+      "id": "si-lk-sinhala-period",
+      "category": "locale-punctuation",
+      "locale": "si-LK",
+      "operation": "sentenceUnits",
+      "text": "මෙය පළමු වාක්‍යයයි. මෙය දෙවන වාක්‍යයයි.",
+      "expected": [
+        "මෙය පළමු වාක්‍යයයි.",
+        "මෙය දෙවන වාක්‍යයයි."
+      ]
+    },
+    {
+      "id": "or-in-oriya-period",
+      "category": "locale-punctuation",
+      "locale": "or-IN",
+      "operation": "sentenceUnits",
+      "text": "ଏହା ପ୍ରଥମ ବାକ୍ୟ. ଏହା ଦ୍ୱିତୀୟ ବାକ୍ୟ.",
+      "expected": [
+        "ଏହା ପ୍ରଥମ ବାକ୍ୟ.",
+        "ଏହା ଦ୍ୱିତୀୟ ବାକ୍ୟ."
+      ]
+    },
+    {
+      "id": "ru-ru-cyrillic-period",
+      "category": "locale-punctuation",
+      "locale": "ru-RU",
+      "operation": "sentenceUnits",
+      "text": "Это первое предложение. Это второе предложение.",
+      "expected": [
+        "Это первое предложение.",
+        "Это второе предложение."
+      ]
+    },
+    {
+      "id": "he-il-hebrew-period",
+      "category": "locale-punctuation",
+      "locale": "he-IL",
+      "operation": "sentenceUnits",
+      "text": "זו המשפט הראשון. זו המשפט השני.",
+      "expected": [
+        "זו המשפט הראשון.",
+        "זו המשפט השני."
+      ]
+    },
+    {
+      "id": "km-kh-khmer-period",
+      "category": "locale-punctuation",
+      "locale": "km-KH",
+      "operation": "sentenceUnits",
+      "text": "នេះជាល្បែងទីមួយ។ នេះជាល្បែងទីពីរ។",
+      "expected": [
+        "នេះជាល្បែងទីមួយ។",
+        "នេះជាល្បែងទីពីរ។"
+      ]
+    },
+    {
+      "id": "ko-kr-korean-period",
+      "category": "locale-punctuation",
+      "locale": "ko-KR",
+      "operation": "sentenceUnits",
+      "text": "이것은 첫 번째 문장입니다. 이것은 두 번째 문장입니다.",
+      "expected": [
+        "이것은 첫 번째 문장입니다.",
+        "이것은 두 번째 문장입니다."
+      ]
+    },
+    {
+      "id": "hi-in-devanagari-long-no-space-text",
+      "category": "long-sentence",
+      "locale": "hi-IN",
+      "operation": "latencySegments",
+      "fastFirstSegment": false,
+      "textBuilder": {
+        "pattern": "यह एक बहुत लंबा वाक्य है जिसमें बहुत सारे शब्द हैं और इसे पढ़ने में समय लगता है",
+        "repeat": 20,
+        "separator": " "
+      },
+      "assert": {
+        "minSegmentCount": 4,
+        "maxSegmentLength": 240,
+        "preservesNonWhitespace": true
+      }
+    },
+    {
+      "id": "bn-in-bengali-long-no-space-text",
+      "category": "long-sentence",
+      "locale": "bn-IN",
+      "operation": "latencySegments",
+      "fastFirstSegment": false,
+      "textBuilder": {
+        "pattern": "এটি একটি দীর্ঘ বাক্য যার মধ্যে অনেক শব্দ রয়েছে এবং এটি পড়তে সময় নেয়",
+        "repeat": 20,
+        "separator": " "
+      },
+      "assert": {
+        "minSegmentCount": 4,
         "maxSegmentLength": 240,
         "preservesNonWhitespace": true
       }

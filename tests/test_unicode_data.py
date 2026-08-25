@@ -8,7 +8,6 @@ import unittest
 
 from tests.test_support import UNICODE_DATA_PATH, load_driver_module
 
-
 EXPECTED_LANGUAGE_SCRIPT_GROUPS = {
     ("Arabic",): ("ar", "ur"),
     ("Arabic", "Devanagari"): ("ks", "sd"),
@@ -27,9 +26,40 @@ EXPECTED_LANGUAGE_SCRIPT_GROUPS = {
     ("Kannada",): ("kn",),
     ("Khmer",): ("km",),
     ("Latin",): (
-        "bs", "ca", "cs", "cy", "da", "de", "en", "es", "et", "fi", "fil", "fr",
-        "hr", "hu", "id", "is", "it", "jv", "lt", "lv", "ms", "nb", "nl", "pl",
-        "pt", "ro", "sk", "sl", "sq", "su", "sv", "sw", "tr", "vi",
+        "bs",
+        "ca",
+        "cs",
+        "cy",
+        "da",
+        "de",
+        "en",
+        "es",
+        "et",
+        "fi",
+        "fil",
+        "fr",
+        "hr",
+        "hu",
+        "id",
+        "is",
+        "it",
+        "jv",
+        "lt",
+        "lv",
+        "ms",
+        "nb",
+        "nl",
+        "pl",
+        "pt",
+        "ro",
+        "sk",
+        "sl",
+        "sq",
+        "su",
+        "sv",
+        "sw",
+        "tr",
+        "vi",
     ),
     ("Malayalam",): ("ml",),
     ("Ol_Chiki",): ("sat",),
@@ -40,9 +70,7 @@ EXPECTED_LANGUAGE_SCRIPT_GROUPS = {
     ("Thai",): ("th",),
 }
 EXPECTED_LANGUAGE_SCRIPTS = {
-    root: scripts
-    for scripts, roots in EXPECTED_LANGUAGE_SCRIPT_GROUPS.items()
-    for root in roots
+    root: scripts for scripts, roots in EXPECTED_LANGUAGE_SCRIPT_GROUPS.items() for root in roots
 }
 
 
@@ -71,11 +99,7 @@ class UnicodeDataTests(unittest.TestCase):
         cls.supported_roots = set()
         for package in packages:
             parts = str(package.get("id", "")).split("-")
-            if (
-                len(parts) >= 2
-                and re.fullmatch(r"[a-z]{2,3}", parts[0])
-                and re.fullmatch(r"[a-z]{2}", parts[1])
-            ):
+            if len(parts) >= 2 and re.fullmatch(r"[a-z]{2,3}", parts[0]) and re.fullmatch(r"[a-z]{2}", parts[1]):
                 cls.supported_roots.add(parts[0])
 
     def test_generated_versions_are_pinned(self) -> None:
@@ -103,11 +127,7 @@ class UnicodeDataTests(unittest.TestCase):
         )
         for root, scripts in language_scripts.items():
             with self.subTest(root=root):
-                expected_ranges = tuple(
-                    span
-                    for script in scripts
-                    for span in script_ranges[script]
-                )
+                expected_ranges = tuple(span for script in scripts for span in script_ranges[script])
                 self.assertEqual(expected_ranges, language_ranges[root])
                 self.assertEqual(
                     expected_ranges,

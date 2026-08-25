@@ -181,7 +181,7 @@
 		if (!Number.isFinite(gain)) {
 			return 1;
 		}
-		return Math.max(0, Math.min(1.75, gain));
+		return Math.max(0, Math.min(1.70, gain));
 	}
 
 	function tempoRateFromPayload(payload) {

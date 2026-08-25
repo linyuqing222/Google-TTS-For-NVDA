@@ -4,8 +4,9 @@ import json
 import unicodedata
 import unittest
 
-from tests.test_support import ROOT, load_driver_module, pcm_bytes as _pcm, pcm_samples as _samples
-
+from tests.test_support import ROOT, load_driver_module
+from tests.test_support import pcm_bytes as _pcm
+from tests.test_support import pcm_samples as _samples
 
 CORPUS_PATH = ROOT / "tests" / "segmentation_corpus.json"
 SUPPORTED_SCHEMA_VERSION = 1
@@ -37,7 +38,7 @@ def _materialize_text(case: dict[str, object]) -> str:
 def _sentence_units(segmenter: object, text: str) -> list[str]:
     starts = [0, *segmenter.find_sentence_splits(text)]
     ends = [*starts[1:], len(text)]
-    return [text[start:end].strip() for start, end in zip(starts, ends) if text[start:end].strip()]
+    return [text[start:end].strip() for start, end in zip(starts, ends, strict=False) if text[start:end].strip()]
 
 
 class PcmSilenceShortenerTests(unittest.TestCase):
@@ -173,10 +174,7 @@ class PcmSilenceShortenerTests(unittest.TestCase):
                         self.assertEqual(whole, self._process_segments(mode, segments, chunks))
             for chunk_size in (1, 2, 3, 5, 17, 64):
                 with self.subTest(mode=mode, chunk_size=chunk_size):
-                    chunks = [
-                        [chunk_size] * (len(segment) // chunk_size)
-                        for segment in segments
-                    ]
+                    chunks = [[chunk_size] * (len(segment) // chunk_size) for segment in segments]
                     self.assertEqual(whole, self._process_segments(mode, segments, chunks))
 
     def test_end_only_preserves_hidden_boundary_and_shortens_final_end(self) -> None:
@@ -257,7 +255,9 @@ class TextSegmenterTests(unittest.TestCase):
 
         self.assertGreaterEqual(len(segments), 3)
         self.assertLessEqual(len(segments[0]), self.processing.FAST_SOFT_PHRASE_SEGMENT_MAX_CHARS)
-        self.assertTrue(any(len(segment) > self.processing.FAST_SOFT_PHRASE_SEGMENT_MAX_CHARS for segment in segments[1:]))
+        self.assertTrue(
+            any(len(segment) > self.processing.FAST_SOFT_PHRASE_SEGMENT_MAX_CHARS for segment in segments[1:])
+        )
 
     def test_corpus_schema(self) -> None:
         self.assertEqual(SUPPORTED_SCHEMA_VERSION, self.corpus.get("schemaVersion"))
@@ -308,7 +308,10 @@ class TextSegmenterTests(unittest.TestCase):
         if "firstMaxLength" in assertions:
             self.assertLessEqual(len(segments[0]), assertions["firstMaxLength"])
         if assertions.get("preservesNonWhitespace"):
-            compact = lambda value: "".join(value.split())
+
+            def compact(value):
+                return "".join(value.split())
+
             self.assertEqual(compact(text), compact("".join(segments)))
         forbidden_starts = tuple(assertions.get("forbidSegmentStartCharacters", []))
         forbidden_ends = tuple(assertions.get("forbidSegmentEndCharacters", []))
@@ -323,7 +326,7 @@ class TextSegmenterTests(unittest.TestCase):
 
     def test_corpus_covers_requested_categories(self) -> None:
         categories = {case["category"] for case in self.corpus["cases"]}
-        self.assertTrue(REQUIRED_CATEGORIES <= categories)
+        self.assertTrue(categories >= REQUIRED_CATEGORIES)
 
 
 class ShortAudioCacheKeyTests(unittest.TestCase):
@@ -338,6 +341,7 @@ class ShortAudioCacheKeyTests(unittest.TestCase):
             "volume",
             "outputGain",
             "artificialRate",
+            "nvdaRate",
         )
         cls.options = {
             "voiceId": "vi-vn-x-multi:gft",
@@ -345,8 +349,9 @@ class ShortAudioCacheKeyTests(unittest.TestCase):
             "pitch": 0.0,
             "postPitch": 1.0,
             "volume": 1.0,
-            "outputGain": 1.75,
+            "outputGain": 1.70,
             "artificialRate": 1.0,
+            "nvdaRate": 50,
         }
 
     def test_cache_key_covers_audio_and_segmentation_inputs(self) -> None:
@@ -470,6 +475,95 @@ class ShortAudioCacheKeyTests(unittest.TestCase):
                 expectedSegmentEnds=0,
             )
         )
+
+
+class SingleLetterAbbreviationGuardTests(unittest.TestCase):
+    """Verify the isascii() guard prevents non-Latin single-letter words from blocking splits."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.processing = load_driver_module("speech_processing")
+        cls.segmenter = cls.processing.DEFAULT_TEXT_SEGMENTER
+
+    def test_kannada_single_letter_before_period_splits(self) -> None:
+        splits = self.segmenter.find_sentence_splits("\u0caf. \u0caf.")
+        self.assertEqual(1, len(splits))
+
+    def test_oriya_single_letter_before_period_splits(self) -> None:
+        splits = self.segmenter.find_sentence_splits("\u0b5f. \u0b5f.")
+        self.assertEqual(1, len(splits))
+
+    def test_latin_single_letter_still_stays_with_period(self) -> None:
+        splits = self.segmenter.find_sentence_splits("U.S.A. is big.")
+        self.assertEqual(0, len(splits))
+
+
+class UnicodeSentenceTerminatorTests(unittest.TestCase):
+    """Ensure the public is_sentence_terminator_character covers every script."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.processing = load_driver_module("speech_processing")
+
+    def test_ascii_sentence_terminals(self) -> None:
+        is_term = self.processing.is_sentence_terminator_character
+        for char in (".", "!", "?"):
+            with self.subTest(char=char):
+                self.assertTrue(is_term(char))
+        for char in (",", ";", ":", "-", "("):
+            with self.subTest(char=char):
+                self.assertFalse(is_term(char))
+
+    def test_cjk_fullwidth_terminals(self) -> None:
+        is_term = self.processing.is_sentence_terminator_character
+        # Chinese/Japanese fullwidth period, exclamation, question
+        self.assertTrue(is_term(chr(0x3002)))  # 。
+        self.assertTrue(is_term(chr(0xFF01)))  # ！
+        self.assertTrue(is_term(chr(0xFF1F)))  # ？
+
+    def test_arabic_sentence_terminals(self) -> None:
+        is_term = self.processing.is_sentence_terminator_character
+        self.assertTrue(is_term(chr(0x061E)))  # ؞
+        self.assertTrue(is_term(chr(0x061F)))  # ؟
+        self.assertTrue(is_term(chr(0x06D4)))  # ۔
+
+    def test_devanagari_danda(self) -> None:
+        is_term = self.processing.is_sentence_terminator_character
+        self.assertTrue(is_term(chr(0x0964)))  # ।
+        self.assertTrue(is_term(chr(0x0965)))  # ॥
+
+    def test_thai_angular_punctuation(self) -> None:
+        is_term = self.processing.is_sentence_terminator_character
+        self.assertTrue(is_term(chr(0x0E5A)))  # ๚
+        self.assertTrue(is_term(chr(0x0E5B)))  # ๛
+
+    def test_meetei_mayek_section_marker(self) -> None:
+        is_term = self.processing.is_sentence_terminator_character
+        self.assertTrue(is_term(chr(0xAAF0)))  # ꯰
+        self.assertTrue(is_term(chr(0xAAF1)))  # ꯱
+
+    def test_tailored_ellipsis_is_sentence_terminal(self) -> None:
+        is_term = self.processing.is_sentence_terminator_character
+        self.assertTrue(is_term(chr(0x2026)))  # …
+
+    def test_greek_question_mark(self) -> None:
+        is_term = self.processing.is_sentence_terminator_character
+        self.assertTrue(is_term(chr(0x037E)))  # ;
+
+    def test_non_terminal_punctuation_is_not_sentence_terminal(self) -> None:
+        is_term = self.processing.is_sentence_terminator_character
+        non_terminals = (
+            chr(0x060C),  # Arabic comma
+            chr(0x0964 - 1),  # Just before danda
+            chr(0xFF0C),  # Fullwidth comma
+            chr(0x3001),  # Ideographic comma
+            chr(0x0E2B),  # Thai character (not punctuation)
+            chr(0x2014),  # Em dash
+            chr(0x2013),  # En dash
+        )
+        for char in non_terminals:
+            with self.subTest(char=f"U+{ord(char):04X}"):
+                self.assertFalse(is_term(char))
 
 
 if __name__ == "__main__":

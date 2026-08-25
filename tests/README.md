@@ -23,9 +23,12 @@ validated before behavioral cases run.
 `test_speech_processing.py` covers all three pause modes, the inclusive PCM
 noise floor, arbitrary/odd PCM packet boundaries, hidden-segment finalization,
 bounded lead buffering, whole/segment cache identity, safe boundary-context
-reuse, text segmentation, corpus schema validation, and the medium-text
-fast-first fallback. Keep these tests together because they exercise the same
-standalone speech-processing module.
+reuse, text segmentation, corpus schema validation, the medium-text fast-first
+fallback, single-letter abbreviation guards (the `isascii()` guard prevents
+non-Latin single-letter words from blocking splits), and Unicode sentence
+terminal coverage across ASCII, CJK, Arabic, Devanagari, Thai, Meetei Mayek,
+Greek, and the tailored ellipsis. Keep these tests together because they
+exercise the same standalone speech-processing module.
 
 `test_dependency_isolation.py` verifies that the browser bridge loads Google TTS
 For NVDA's private vendored WebSocket client even when another add-on has already
@@ -42,8 +45,16 @@ for translators.
 
 `test_runtime_recovery.py` covers browser-reported speech failures: a request may
 be retried once with a fresh runtime only before any PCM is emitted, partial audio
-must never be repeated, and unhealthy or disconnected runtimes cannot be retained
-by standby mode.
+must never be repeated, a no-audio error never retries more than once after
+recycle, and only a healthy, connected runtime with a non-busy engine and no
+pending recycle flag is safe for standby release.
+
+`test_language_redirect.py` covers the language redirect and consolidated language
+matching helpers in `language_detector.py`. It verifies explicit dialect redirects
+(french-canadian to fr-FR, portuguese-european to pt-BR, spanish-spain to es-MX,
+etc.), root-language fallback when no explicit redirect exists, CLDR alias
+resolution (fil/tl, he/iw), Chinese-family cross-variant matching, underscore
+normalization, and edge cases with None and empty inputs.
 
 Run all standalone tests without importing NVDA:
 
@@ -56,8 +67,11 @@ python -m unittest discover -s tests -v
 table is complete. It imports the production `language_profiles.py` fallback
 directly rather than extracting methods from the NVDA synth driver. The expected
 script map covers every bundled language root, every mapped script is exercised
-against a disjoint candidate, and shared-script language pairs must remain
-ambiguous instead of being assigned arbitrarily.
+against a disjoint candidate, shared-script language pairs must remain ambiguous
+instead of being assigned arbitrarily, Unicode 17 script ranges outside old
+blocks are present, script ranges are sorted and non-overlapping, language
+ranges are exactly composed from their mapped scripts, and the sentence-terminal
+tailoring set is minimal and disjoint from the official table.
 `unicode_data.py` is generated from UCD 17.0 and CLDR 48.2 with:
 
 ```powershell

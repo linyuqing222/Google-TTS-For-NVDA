@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Google TTS Voice Metadata Extractor and Catalog Generator
 =========================================================
@@ -8,17 +7,16 @@ and updates voices.json with clean, merged, and deduplicated entries.
 """
 
 import concurrent.futures
-import hashlib
 import io
 import json
-import os
 import re
 import sys
 import threading
 import time
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
+
 import requests
 
 # Paths
@@ -32,8 +30,21 @@ GOOGLE_TTS_JSON_CANDIDATES = [
 
 # Find target voices.json
 VOICES_JSON_CANDIDATES = [
-    BASE_DIR / "Google-TTS-For-NVDA" / "googleTtsForNvda" / "synthDrivers" / "googleTtsForNvda" / "WasmTtsEngine" / "20260625.1" / "voices.json",
-    BASE_DIR / "googleTtsForNvda" / "synthDrivers" / "googleTtsForNvda" / "WasmTtsEngine" / "20260625.1" / "voices.json",
+    BASE_DIR
+    / "Google-TTS-For-NVDA"
+    / "googleTtsForNvda"
+    / "synthDrivers"
+    / "googleTtsForNvda"
+    / "WasmTtsEngine"
+    / "20260625.1"
+    / "voices.json",
+    BASE_DIR
+    / "googleTtsForNvda"
+    / "synthDrivers"
+    / "googleTtsForNvda"
+    / "WasmTtsEngine"
+    / "20260625.1"
+    / "voices.json",
 ]
 
 # Concurrency & Request Settings
@@ -45,7 +56,7 @@ MAX_RETRIES = 2
 output_lock = threading.Lock()
 
 # Comprehensive mapping of locale codes to Native Language Names
-NATIVE_LANGUAGE_NAMES: Dict[str, str] = {
+NATIVE_LANGUAGE_NAMES: dict[str, str] = {
     "en-au": "Australian English",
     "en-us": "US English",
     "en-gb": "UK English",
@@ -129,7 +140,7 @@ NATIVE_LANGUAGE_NAMES: Dict[str, str] = {
     "sat-in": "ᱥᱟᱱᱛᱟᱲᱤ",
     "si-lk": "සිංහල",
     "sk-sk": "Slovenčina",
-    "su-id": "Basa Sunda"
+    "su-id": "Basa Sunda",
 }
 
 
@@ -152,28 +163,36 @@ def format_speaker_name(voice_id: str, native_name: str, idx: int, num_speakers:
     elif voice_id.endswith("-news-lemonbalm"):
         return f"Google {native_name} News" if num_speakers == 1 else f"Google {native_name} News {idx}"
     elif voice_id.endswith("-news-darwinnrio-lemonbalm"):
-        return f"Google {native_name} News Darwinnrio" if num_speakers == 1 else f"Google {native_name} News Darwinnrio {idx}"
+        return (
+            f"Google {native_name} News Darwinnrio"
+            if num_speakers == 1
+            else f"Google {native_name} News Darwinnrio {idx}"
+        )
     elif voice_id.endswith("-afh"):
         return f"Chrome OS {native_name} (afh)" if num_speakers == 1 else f"Chrome OS {native_name} {idx} (afh)"
     elif voice_id.endswith("-fis"):
         return f"Chrome OS {native_name} (fis)" if num_speakers == 1 else f"Chrome OS {native_name} {idx} (fis)"
     elif voice_id.endswith("-afh-seanet"):
-        return f"Google {native_name} (afh Natural)" if num_speakers == 1 else f"Google {native_name} {idx} (afh Natural)"
+        return (
+            f"Google {native_name} (afh Natural)" if num_speakers == 1 else f"Google {native_name} {idx} (afh Natural)"
+        )
     elif voice_id.endswith("-fis-seanet"):
-        return f"Google {native_name} (fis Natural)" if num_speakers == 1 else f"Google {native_name} {idx} (fis Natural)"
+        return (
+            f"Google {native_name} (fis Natural)" if num_speakers == 1 else f"Google {native_name} {idx} (fis Natural)"
+        )
     else:
         suffix = voice_id.split("-x-")[-1]
         return f"Google {native_name} ({suffix})" if num_speakers == 1 else f"Google {native_name} {idx} ({suffix})"
 
 
-def extract_speakers_from_textproto(content_bytes: bytes) -> List[Tuple[str, str]]:
+def extract_speakers_from_textproto(content_bytes: bytes) -> list[tuple[str, str]]:
     try:
         text = content_bytes.decode("utf-8", errors="ignore")
     except Exception:
         return []
 
-    speakers: List[Tuple[str, str]] = []
-    seen_speakers: Set[str] = set()
+    speakers: list[tuple[str, str]] = []
+    seen_speakers: set[str] = set()
 
     blocks = re.findall(r"speakers\s*\{([^}]+)\}", text)
     for block in blocks:
@@ -185,11 +204,13 @@ def extract_speakers_from_textproto(content_bytes: bytes) -> List[Tuple[str, str
             if spk_code not in seen_speakers:
                 seen_speakers.add(spk_code)
                 speakers.append((spk_code, gen_str))
-                
+
     return speakers
 
 
-def fetch_new_package_speakers(session: requests.Session, pkg_info: Dict[str, Any], all_packages_map: Dict[str, Dict[str, Any]]) -> Optional[List[Dict[str, str]]]:
+def fetch_new_package_speakers(
+    session: requests.Session, pkg_info: dict[str, Any], all_packages_map: dict[str, dict[str, Any]]
+) -> list[dict[str, str]] | None:
     voice_id = pkg_info["id"]
     url = pkg_info["url"]
     locale = voice_id.split("-x-")[0]
@@ -199,13 +220,13 @@ def fetch_new_package_speakers(session: requests.Session, pkg_info: Dict[str, An
         try:
             with output_lock:
                 print(f"[FETCHING] {voice_id} ...", flush=True)
-                
+
             response = session.get(url, timeout=REQUEST_TIMEOUT)
             if response.status_code != 200:
                 raise requests.RequestException(f"HTTP {response.status_code}")
-                
+
             payload = response.content
-            raw_speakers: List[Tuple[str, str]] = []
+            raw_speakers: list[tuple[str, str]] = []
 
             with zipfile.ZipFile(io.BytesIO(payload), "r") as zf:
                 if "backend_pipeline.textproto" in zf.namelist():
@@ -226,11 +247,7 @@ def fetch_new_package_speakers(session: requests.Session, pkg_info: Dict[str, An
 
             for idx, (spk_code, gender) in enumerate(raw_speakers, start=1):
                 display_name = format_speaker_name(voice_id, native_name, idx, num_speakers)
-                formatted_speakers.append({
-                    "speaker": spk_code,
-                    "name": display_name,
-                    "gender": gender
-                })
+                formatted_speakers.append({"speaker": spk_code, "name": display_name, "gender": gender})
 
             with output_lock:
                 print(f"[SUCCESS] {voice_id} ({len(formatted_speakers)} speakers)", flush=True)
@@ -248,7 +265,7 @@ def fetch_new_package_speakers(session: requests.Session, pkg_info: Dict[str, An
 
 def main():
     print("=== Google TTS Voice Catalog Generator ===")
-    
+
     source_json_path = None
     for cand in GOOGLE_TTS_JSON_CANDIDATES:
         if cand.exists():
@@ -256,11 +273,11 @@ def main():
             break
 
     if not source_json_path:
-        print(f"[ABORT] Error: google tts voices.json not found in expected locations.", file=sys.stderr)
+        print("[ABORT] Error: google tts voices.json not found in expected locations.", file=sys.stderr)
         sys.exit(1)
 
     print(f"Reading source catalog from: {source_json_path}")
-    with open(source_json_path, "r", encoding="utf-8") as f:
+    with open(source_json_path, encoding="utf-8") as f:
         source_data = json.load(f)
 
     source_packs = source_data.get("packs", [])
@@ -276,10 +293,10 @@ def main():
         voices_json_path = VOICES_JSON_CANDIDATES[0]
 
     # Load existing voices.json if present
-    existing_entries: Dict[str, Dict[str, Any]] = {}
+    existing_entries: dict[str, dict[str, Any]] = {}
     if voices_json_path.exists():
         try:
-            with open(voices_json_path, "r", encoding="utf-8") as f:
+            with open(voices_json_path, encoding="utf-8") as f:
                 for item in json.load(f):
                     if isinstance(item, dict) and "id" in item:
                         existing_entries[item["id"]] = item
@@ -288,10 +305,10 @@ def main():
             print(f"[WARN] Could not parse existing voices.json: {e}", file=sys.stderr)
 
     # Prepare merged map
-    merged_map: Dict[str, Dict[str, Any]] = {}
+    merged_map: dict[str, dict[str, Any]] = {}
 
     # Step 1: Process items from source_packs
-    new_packages_to_fetch: List[Dict[str, Any]] = []
+    new_packages_to_fetch: list[dict[str, Any]] = []
 
     for pack in source_packs:
         file_id = pack.get("name", "")
@@ -301,20 +318,20 @@ def main():
         voice_id = re.sub(r"-r\d+$", "", file_id)
         compressed_size = pack.get("compressed_size", 0)
         sha256_checksum = pack.get("sha256_checksum", "")
-        
+
         urls = pack.get("download_urls", [])
         if not urls:
             continue
         # Prefer dl.google.com url if present
         url = next((u for u in urls if "dl.google.com" in u), urls[0])
 
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "id": voice_id,
             "fileId": file_id,
             "url": url,
             "sha256Checksum": sha256_checksum,
             "compressedSize": compressed_size,
-            "remote": True
+            "remote": True,
         }
 
         if voice_id.endswith("-seanet"):
@@ -333,9 +350,11 @@ def main():
 
     if new_packages_to_fetch:
         with requests.Session() as session:
-            session.headers.update({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            })
+            session.headers.update(
+                {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                }
+            )
             with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
                 future_to_pkg = {
                     executor.submit(fetch_new_package_speakers, session, pkg, merged_map): pkg
@@ -351,10 +370,7 @@ def main():
                         merged_map.pop(pkg["id"], None)
 
     # Sort neatly by language code (locale) and then by package ID
-    sorted_entries = sorted(
-        merged_map.values(),
-        key=lambda x: (x["id"].split("-x-")[0].lower(), x["id"].lower())
-    )
+    sorted_entries = sorted(merged_map.values(), key=lambda x: (x["id"].split("-x-")[0].lower(), x["id"].lower()))
 
     # Save updated content directly to voices.json
     voices_json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -362,7 +378,7 @@ def main():
         json.dump(sorted_entries, f, ensure_ascii=False, indent=2)
         f.write("\n")
 
-    print(f"\n=== Catalog Update Complete ===")
+    print("\n=== Catalog Update Complete ===")
     print(f"Total entries in voices.json: {len(sorted_entries)}")
     print(f"Saved directly to: {voices_json_path}")
 
