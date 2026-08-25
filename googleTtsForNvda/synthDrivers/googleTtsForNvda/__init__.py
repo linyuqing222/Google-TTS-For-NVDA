@@ -88,6 +88,11 @@ _MIN_ARTIFICIAL_RATE = 0.5
 _MAX_ARTIFICIAL_RATE = 2.2
 _NORMAL_SENTENCE_BREAK_MS = 95
 _SHORTENED_SENTENCE_BREAK_MS = 15
+_BREAK_RATE_FACTOR_MIN = 0.4
+_BREAK_RATE_FACTOR_MAX = 1.8
+_END_OF_UTTERANCE_PAUSE_MS = 80
+_END_OF_UTTERANCE_RATE_FACTOR_MIN = 0.5
+_END_OF_UTTERANCE_RATE_FACTOR_MAX = 1.6
 _GOOGLE_TTS_LANG_CHANGE_ATTR = "googleTtsForNvdaLanguage"
 _MISSING_GOOGLE_TTS_LANGUAGE = object()
 _SpeechRequest = tuple[list[Any], str, int, bool, int, int, str, threading.Event]
@@ -264,6 +269,35 @@ _ENGLISH_WORDS = {
     "you",
     "your",
 }
+
+
+
+# 5-point rate factor interpolation (inverted from IBMTTS empirical measurements).
+# Higher rates get shorter breaks; lower rates get longer breaks.
+_BREAK_RATE_TABLE = ((10, 1.8), (43, 1.3), (60, 1.0), (75, 0.7), (85, 0.4))
+
+
+def _interpolate_rate_factor(rate: int, table: tuple[tuple[int, float], ...]) -> float:
+    """Linear interpolation over a (rate, factor) lookup table."""
+    if rate <= table[0][0]:
+        return table[0][1]
+    if rate >= table[-1][0]:
+        return table[-1][1]
+    for i in range(len(table) - 1):
+        r0, f0 = table[i]
+        r1, f1 = table[i + 1]
+        if r0 <= rate <= r1:
+            t = (rate - r0) / (r1 - r0)
+            return f0 + t * (f1 - f0)
+    return table[-1][1]
+
+
+def _break_rate_factor(rate: int) -> float:
+    return max(_BREAK_RATE_FACTOR_MIN, min(_BREAK_RATE_FACTOR_MAX, _interpolate_rate_factor(rate, _BREAK_RATE_TABLE)))
+
+
+def _end_of_utterance_rate_factor(rate: int) -> float:
+    return max(_END_OF_UTTERANCE_RATE_FACTOR_MIN, min(_END_OF_UTTERANCE_RATE_FACTOR_MAX, _interpolate_rate_factor(rate, _BREAK_RATE_TABLE)))
 
 
 class SynthDriver(synthDriverHandler.SynthDriver):
@@ -884,11 +918,13 @@ class SynthDriver(synthDriverHandler.SynthDriver):
                 if cancelEvent.is_set():
                     return
                 groupedSegments.append((segment, segmentIndexes))
-                if i < len(segments) - 1 and self._should_pause_after_segment(segment):
-                    yield from flush_grouped_segments(
-                        _PAUSE_MODE_SHORTEN_ALL if pauseMode == _PAUSE_MODE_SHORTEN_ALL else _PAUSE_MODE_DO_NOT_SHORTEN,
-                    )
-                    yield ("break", self._sentence_break_milliseconds(pauseMode))
+                if i < len(segments) - 1:
+                    isSentenceBoundary = self._should_pause_after_segment(segment)
+                    if isSentenceBoundary or pauseMode == _PAUSE_MODE_SHORTEN_ALL:
+                        yield from flush_grouped_segments(
+                            _PAUSE_MODE_SHORTEN_ALL if isSentenceBoundary and pauseMode == _PAUSE_MODE_SHORTEN_ALL else _PAUSE_MODE_DO_NOT_SHORTEN,
+                        )
+                        yield ("break", self._sentence_break_milliseconds(pauseMode) if isSentenceBoundary else _SHORTENED_SENTENCE_BREAK_MS)
             yield from flush_grouped_segments(
                 pauseMode
                 if pauseMode in (_PAUSE_MODE_SHORTEN_END_ONLY, _PAUSE_MODE_SHORTEN_ALL)
@@ -906,7 +942,10 @@ class SynthDriver(synthDriverHandler.SynthDriver):
                 yield from flush_text()
                 if cancelEvent.is_set():
                     return
-                yield ("break", max(0, int(item.time)))
+                breakMs = max(0, int(item.time))
+                if breakMs > 0 and rate > 0:
+                    breakMs = int(breakMs * _break_rate_factor(rate))
+                yield ("break", breakMs)
             elif itemType is CharacterModeCommand:
                 _inCharMode = bool(item.state)
             elif itemType is IndexCommand:
@@ -1059,6 +1098,12 @@ class SynthDriver(synthDriverHandler.SynthDriver):
                         synthIndexReached.notify(synth=self, index=payload)
             if not cancelEvent.is_set():
                 self._finish_request_audio()
+            if (
+                not cancelEvent.is_set()
+                and pauseMode in (_PAUSE_MODE_SHORTEN_END_ONLY, _PAUSE_MODE_SHORTEN_ALL)
+                and rate > 0
+            ):
+                self._feed_silence(int(_END_OF_UTTERANCE_PAUSE_MS * _end_of_utterance_rate_factor(rate)))
             if not cancelEvent.is_set():
                 synthDoneSpeaking.notify(synth=self)
         except CdpCancelled:
