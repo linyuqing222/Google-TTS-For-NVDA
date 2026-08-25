@@ -271,7 +271,6 @@ _ENGLISH_WORDS = {
 }
 
 
-
 # 5-point rate factor interpolation (inverted from IBMTTS empirical measurements).
 # Higher rates get shorter breaks; lower rates get longer breaks.
 _BREAK_RATE_TABLE = ((10, 1.8), (43, 1.3), (60, 1.0), (75, 0.7), (85, 0.4))
@@ -297,7 +296,10 @@ def _break_rate_factor(rate: int) -> float:
 
 
 def _end_of_utterance_rate_factor(rate: int) -> float:
-    return max(_END_OF_UTTERANCE_RATE_FACTOR_MIN, min(_END_OF_UTTERANCE_RATE_FACTOR_MAX, _interpolate_rate_factor(rate, _BREAK_RATE_TABLE)))
+    return max(
+        _END_OF_UTTERANCE_RATE_FACTOR_MIN,
+        min(_END_OF_UTTERANCE_RATE_FACTOR_MAX, _interpolate_rate_factor(rate, _BREAK_RATE_TABLE)),
+    )
 
 
 class SynthDriver(synthDriverHandler.SynthDriver):
@@ -922,9 +924,16 @@ class SynthDriver(synthDriverHandler.SynthDriver):
                     isSentenceBoundary = self._should_pause_after_segment(segment)
                     if isSentenceBoundary or pauseMode == _PAUSE_MODE_SHORTEN_ALL:
                         yield from flush_grouped_segments(
-                            _PAUSE_MODE_SHORTEN_ALL if isSentenceBoundary and pauseMode == _PAUSE_MODE_SHORTEN_ALL else _PAUSE_MODE_DO_NOT_SHORTEN,
+                            _PAUSE_MODE_SHORTEN_ALL
+                            if isSentenceBoundary and pauseMode == _PAUSE_MODE_SHORTEN_ALL
+                            else _PAUSE_MODE_DO_NOT_SHORTEN,
                         )
-                        yield ("break", self._sentence_break_milliseconds(pauseMode) if isSentenceBoundary else _SHORTENED_SENTENCE_BREAK_MS)
+                        yield (
+                            "break",
+                            self._sentence_break_milliseconds(pauseMode)
+                            if isSentenceBoundary
+                            else _SHORTENED_SENTENCE_BREAK_MS,
+                        )
             yield from flush_grouped_segments(
                 pauseMode
                 if pauseMode in (_PAUSE_MODE_SHORTEN_END_ONLY, _PAUSE_MODE_SHORTEN_ALL)
