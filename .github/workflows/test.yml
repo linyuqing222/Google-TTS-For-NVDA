@@ -14,9 +14,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -30,7 +30,7 @@ jobs:
         run: ruff format --check .
 
       - name: Mypy type check
-        run: mypy --ignore-missing-imports --exclude "websocketClientRepo" googleTtsForNvda/ tests/
+        run: mypy --config-file mypy.ini --exclude "globalPlugins" --exclude "websocketClientRepo" --exclude "build_i18n.py" googleTtsForNvda/ tests/
 
       - name: Run tests
         run: python -m unittest discover -s tests -v
