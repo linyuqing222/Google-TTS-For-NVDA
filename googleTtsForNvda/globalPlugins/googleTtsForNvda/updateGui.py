@@ -154,7 +154,7 @@ def update_status_message(autoCheckEnabled: bool | None = None) -> str:
 _updateStatusListeners: list[weakref.ReferenceType] = []
 
 
-def register_update_status_listener(listener: object) -> Callable[[], None]:
+def register_update_status_listener(listener: Callable[..., object]) -> Callable[[], None]:
     try:
         listenerRef = weakref.WeakMethod(listener)
     except TypeError:

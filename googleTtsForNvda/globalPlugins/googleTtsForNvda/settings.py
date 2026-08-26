@@ -768,13 +768,13 @@ class GoogleTtsSettingsPanel(SettingsPanel):
                         break
             profile.setdefault("enabled", language.lower() in candidates)
             profile["voice"] = self._valid_profile_variant(language, profile.get("voice"))
-            profile["rate"] = self._profile_int(profile.get("rate"), int(self._speechDefaults["rate"]))
+            profile["rate"] = self._profile_int(profile.get("rate"), int(self._speechDefaults["rate"]))  # type: ignore[call-overload]
             profile["rateBoost"] = self._profile_bool(profile.get("rateBoost"), bool(self._speechDefaults["rateBoost"]))
-            profile["pitch"] = self._profile_int(profile.get("pitch"), int(self._speechDefaults["pitch"]))
-            profile["volume"] = self._profile_int(profile.get("volume"), int(self._speechDefaults["volume"]))
+            profile["pitch"] = self._profile_int(profile.get("pitch"), int(self._speechDefaults["pitch"]))  # type: ignore[call-overload]
+            profile["volume"] = self._profile_int(profile.get("volume"), int(self._speechDefaults["volume"]))  # type: ignore[call-overload]
             profile["capPitchChange"] = self._profile_cap_pitch(
                 profile.get("capPitchChange"),
-                int(self._speechDefaults["capPitchChange"]),
+                int(self._speechDefaults["capPitchChange"]),  # type: ignore[call-overload]
             )
             profile["sayCapForCapitals"] = self._profile_bool(
                 profile.get("sayCapForCapitals"),
@@ -810,13 +810,13 @@ class GoogleTtsSettingsPanel(SettingsPanel):
 
     def _profile_int(self, value: object, default: int) -> int:
         try:
-            return max(0, min(100, int(value)))
+            return max(0, min(100, int(value)))  # type: ignore[call-overload]
         except (TypeError, ValueError):
             return max(0, min(100, int(default)))
 
     def _profile_cap_pitch(self, value: object, default: int) -> int:
         try:
-            return max(-100, min(100, int(value)))
+            return max(-100, min(100, int(value)))  # type: ignore[call-overload]
         except (TypeError, ValueError):
             return max(-100, min(100, int(default)))
 
