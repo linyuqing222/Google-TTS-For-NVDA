@@ -643,6 +643,17 @@ class _StandbyRuntimeManager:
         bridgeForWorker: ChromeTtsBridge | None = None
         bridgeToTerminate: ChromeTtsBridge | None = None
         try:
+            # Early exit: if the bridge is already warm and the signature matches,
+            # skip the full refresh to avoid unnecessary browser restarts.
+            with self._lock:
+                if self._bridge is not None and self._ready and not _refresh_reason_requires_runtime_restart(reason):
+                    catalog = _installed_catalog()
+                    if catalog is not None:
+                        currentSignature = _catalog_signature(catalog)
+                        if self._signature == currentSignature:
+                            self._start_watchers_locked()
+                            log.debug("Google TTS standby browser runtime already warm, skipping refresh.")
+                            return
             catalog = _installed_catalog()
             if cancelEvent.is_set():
                 raise CdpCancelled()

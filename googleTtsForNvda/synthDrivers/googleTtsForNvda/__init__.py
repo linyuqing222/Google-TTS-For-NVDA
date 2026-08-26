@@ -86,22 +86,26 @@ _OUTPUT_GAIN_MAKEUP = 1.70
 _PROTECTED_ENGINE_RATE = 1.18
 _MIN_ARTIFICIAL_RATE = 0.5
 _MAX_ARTIFICIAL_RATE = 2.2
-_NORMAL_SENTENCE_BREAK_MS = 95
+_NORMAL_SENTENCE_BREAK_MS = 45
 _SHORTENED_SENTENCE_BREAK_MS = 15
 _BREAK_RATE_FACTOR_MIN = 0.4
 _BREAK_RATE_FACTOR_MAX = 1.8
-_END_OF_UTTERANCE_PAUSE_MS = 80
+_END_OF_UTTERANCE_PAUSE_MS = 40
 _END_OF_UTTERANCE_RATE_FACTOR_MIN = 0.5
 _END_OF_UTTERANCE_RATE_FACTOR_MAX = 1.6
 _GOOGLE_TTS_LANG_CHANGE_ATTR = "googleTtsForNvdaLanguage"
 _MISSING_GOOGLE_TTS_LANGUAGE = object()
 _SpeechRequest = tuple[list[Any], str, int, bool, int, int, str, threading.Event]
 _IndexMarker = tuple[Any, int]
-_PRELOAD_RESUME_DELAY_SECONDS = 0.45
+_PRELOAD_RESUME_DELAY_SECONDS = 0.15
 _VOICE_WARMUP_TEXT = " "
 _AUTO_LANGUAGE_NOTICE_ID = "notice"
 _AUTO_DETECT_MIN_SCORE = 2
 _AUTO_DETECT_MIN_MARGIN = 1
+# Flush a grouped speech segment at soft phrase boundaries when the
+# accumulated character count reaches this threshold.  This balances
+# segment-cache hit-rate against too many tiny CDP round-trips.
+_FLUSH_GROUP_CHARS_THRESHOLD = 120
 
 
 class ReadOnlyTextDriverSetting(DriverSetting):
@@ -922,7 +926,10 @@ class SynthDriver(synthDriverHandler.SynthDriver):
                 groupedSegments.append((segment, segmentIndexes))
                 if i < len(segments) - 1:
                     isSentenceBoundary = self._should_pause_after_segment(segment)
-                    if isSentenceBoundary or pauseMode == _PAUSE_MODE_SHORTEN_ALL:
+                    accumulatedChars = sum(len(seg) for seg, _ in groupedSegments)
+                    if isSentenceBoundary or (
+                        pauseMode == _PAUSE_MODE_SHORTEN_ALL and accumulatedChars >= _FLUSH_GROUP_CHARS_THRESHOLD
+                    ):
                         yield from flush_grouped_segments(
                             _PAUSE_MODE_SHORTEN_ALL
                             if isSentenceBoundary and pauseMode == _PAUSE_MODE_SHORTEN_ALL
@@ -1111,6 +1118,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
                 not cancelEvent.is_set()
                 and pauseMode in (_PAUSE_MODE_SHORTEN_END_ONLY, _PAUSE_MODE_SHORTEN_ALL)
                 and rate > 0
+                and sum(len(item) for item in speechSequence if isinstance(item, str)) > 40
             ):
                 self._feed_silence(int(_END_OF_UTTERANCE_PAUSE_MS * _end_of_utterance_rate_factor(rate)))
             if not cancelEvent.is_set():
@@ -1138,6 +1146,10 @@ class SynthDriver(synthDriverHandler.SynthDriver):
         hiddenSegments: list[str] | None = None,
         pauseShorteningMode: str = _PAUSE_MODE_DO_NOT_SHORTEN,
     ) -> None:
+        # Coalescing: if the request was already cancelled before we even start
+        # the CDP round-trip, skip it entirely to avoid wasting browser resources.
+        if cancelEvent.is_set():
+            return
         originalText = text
         originalHiddenSegments = list(hiddenSegments or [])
         indexes = indexes or []
