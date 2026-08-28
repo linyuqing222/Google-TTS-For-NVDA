@@ -215,19 +215,21 @@ def is_package_installed(package: VoicePackage) -> bool:
 
 
 def _voice_files_by_name() -> dict[str, tuple[Path, os.stat_result]]:
+    dirPath = voice_dir()
     try:
-        children = tuple(voice_dir().iterdir())
+        entries = os.scandir(dirPath)
     except OSError:
         return {}
     files: dict[str, tuple[Path, os.stat_result]] = {}
-    for child in children:
-        try:
-            stat = child.stat()
-        except OSError:
-            continue
-        if not stat_module.S_ISREG(stat.st_mode):
-            continue
-        files[child.name] = (child, stat)
+    with entries:
+        for entry in entries:
+            try:
+                stat = entry.stat()
+            except OSError:
+                continue
+            if not stat_module.S_ISREG(stat.st_mode):
+                continue
+            files[entry.name] = (Path(entry.path), stat)
     return files
 
 
@@ -350,7 +352,7 @@ def validate_package_catalog(catalog: VoiceCatalog) -> list[str]:
             lang = speakerDict.get("language", "")
             if not lang:
                 warnings.append(f"Speaker '{speakerId}' in package '{package.id}' has no language.")
-        return warnings
+    return warnings
 
 
 def remove_package(package: VoicePackage) -> None:

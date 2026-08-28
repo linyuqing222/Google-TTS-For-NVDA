@@ -19,12 +19,12 @@ from synthDrivers.googleTtsForNvda import language_utils, standby, voice_store
 from synthDrivers.googleTtsForNvda.catalog import Speaker, VoiceCatalog
 
 from . import updateGui
-from .uiUtils import bind_read_only_text_focus_announcement, resize_read_only_text_for_content
+from .uiUtils import bind_read_only_text_focus_announcement, open_synthesizer_dialog, resize_read_only_text_for_content
 from .voiceManager import _visible_language_sort_key, get_language_display_name
 
 addonHandler.initTranslation()
 
-SYNTH_NAME = "googleTtsForNvda"
+SYNTH_NAME = browserBridge.SYNTH_NAME
 _pendingRuntimeChange: str | None = None
 
 
@@ -104,25 +104,7 @@ def _is_google_synth_current() -> bool:
 
 
 def _open_synthesizer_dialog(parent: wx.Window | None = None) -> bool:
-    try:
-        from gui import settingsDialogs
-
-        dialogClass = getattr(settingsDialogs, "SynthesizerSelectionDialog", None)
-        if dialogClass is None:
-            dialogClass = getattr(settingsDialogs, "SynthesizerDialog", None)
-        if dialogClass is None:
-            raise RuntimeError(_("Select Synthesizer dialog class was not found."))
-        gui.mainFrame.popupSettingsDialog(dialogClass)
-        return True
-    except Exception as exc:
-        log.error("Could not open Select Synthesizer dialog: %s", exc)
-        gui.messageBox(
-            _("The Select Synthesizer dialog could not be opened."),
-            _("Google TTS For NVDA"),
-            wx.OK | wx.ICON_ERROR,
-            parent or gui.mainFrame,
-        )
-        return False
+    return open_synthesizer_dialog(parent)
 
 
 def _save_browser_runtime(runtime: str) -> None:

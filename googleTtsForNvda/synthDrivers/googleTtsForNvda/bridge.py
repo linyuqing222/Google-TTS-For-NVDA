@@ -53,6 +53,7 @@ from .websocketClientRepo import websocket
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
+SYNTH_NAME = "googleTtsForNvda"
 BINDING_NAME = "googleTtsForNvdaBridge"
 SAMPLE_RATE = 24000
 RECV_POLL_TIMEOUT = 0.001
@@ -909,10 +910,6 @@ class BrowserProcessManager:
     @classmethod
     def find_browser(cls) -> str | None:
         return find_browser()
-
-    @classmethod
-    def find_chrome(cls) -> str | None:
-        return cls.find_browser()
 
     @property
     def chrome_process(self) -> subprocess.Popen[bytes] | None:
@@ -1902,10 +1899,6 @@ class ChromeTtsBridge:
     @classmethod
     def find_browser(cls) -> str | None:
         return BrowserProcessManager.find_browser()
-
-    @classmethod
-    def find_chrome(cls) -> str | None:
-        return cls.find_browser()
 
     @property
     def _ws(self) -> websocket.WebSocket | None:

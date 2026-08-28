@@ -49,8 +49,13 @@ from .bridge import (
     ChromeTtsBridge,
     edge_webview2_blocks_effective_runtime,
 )
-from .catalog import EngineLibraryError, VoiceCatalog
-from .language_profiles import language_script_signal
+from .catalog import EngineLibraryError, VoiceCatalog, engine_library_error_message
+from .language_profiles import (
+    LANGUAGE_WORD_RE as _LANGUAGE_WORD_RE,
+)
+from .language_profiles import (
+    language_token_signal as _language_token_signal,
+)
 from .speech_processing import (
     DEFAULT_TEXT_SEGMENTER as _TEXT_SEGMENTER,
 )
@@ -93,8 +98,8 @@ _BREAK_RATE_FACTOR_MAX = 1.8
 _END_OF_UTTERANCE_PAUSE_MS = 40
 _END_OF_UTTERANCE_RATE_FACTOR_MIN = 0.5
 _END_OF_UTTERANCE_RATE_FACTOR_MAX = 1.6
-_GOOGLE_TTS_LANG_CHANGE_ATTR = "googleTtsForNvdaLanguage"
-_MISSING_GOOGLE_TTS_LANGUAGE = object()
+_GOOGLE_TTS_LANG_CHANGE_ATTR = language_detector.GOOGLE_TTS_LANG_CHANGE_ATTR
+_MISSING_GOOGLE_TTS_LANGUAGE = language_detector.MISSING_GOOGLE_TTS_LANGUAGE
 _SpeechRequest = tuple[list[Any], str, int, bool, int, int, str, threading.Event]
 _IndexMarker = tuple[Any, int]
 _PRELOAD_RESUME_DELAY_SECONDS = 0.15
@@ -112,167 +117,6 @@ class ReadOnlyTextDriverSetting(DriverSetting):
     """Marker setting rendered as a read-only edit field by the global plugin."""
 
     readOnlyText = True
-
-
-_LANGUAGE_WORD_RE = re.compile(r"[^\W\d_]+(?:['’_-][^\W\d_]+)?", re.UNICODE)
-_VIETNAMESE_LETTERS = set("ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ")
-_VIETNAMESE_WORDS = {
-    "anh",
-    "ban",
-    "bạn",
-    "bao",
-    "bi",
-    "bị",
-    "bo",
-    "bỏ",
-    "cai",
-    "cái",
-    "cac",
-    "các",
-    "can",
-    "cần",
-    "cau",
-    "câu",
-    "cho",
-    "co",
-    "có",
-    "con",
-    "cua",
-    "của",
-    "cung",
-    "cùng",
-    "dang",
-    "đang",
-    "de",
-    "để",
-    "den",
-    "đến",
-    "di",
-    "đi",
-    "do",
-    "đó",
-    "duoc",
-    "được",
-    "hay",
-    "hon",
-    "hơn",
-    "khi",
-    "khong",
-    "không",
-    "la",
-    "là",
-    "lam",
-    "làm",
-    "len",
-    "lên",
-    "mot",
-    "một",
-    "nay",
-    "này",
-    "neu",
-    "nếu",
-    "nguoi",
-    "người",
-    "nhung",
-    "những",
-    "o",
-    "ở",
-    "qua",
-    "ra",
-    "rang",
-    "rằng",
-    "roi",
-    "rồi",
-    "sau",
-    "se",
-    "sẽ",
-    "thi",
-    "thì",
-    "toi",
-    "tôi",
-    "trong",
-    "tu",
-    "từ",
-    "va",
-    "và",
-    "vao",
-    "vào",
-    "ve",
-    "về",
-    "vi",
-    "vì",
-    "voi",
-    "với",
-}
-_ENGLISH_WORDS = {
-    "a",
-    "about",
-    "after",
-    "all",
-    "also",
-    "an",
-    "and",
-    "any",
-    "are",
-    "as",
-    "at",
-    "be",
-    "because",
-    "been",
-    "before",
-    "between",
-    "brave",
-    "browser",
-    "but",
-    "by",
-    "can",
-    "chrome",
-    "click",
-    "could",
-    "did",
-    "do",
-    "does",
-    "download",
-    "edge",
-    "for",
-    "from",
-    "has",
-    "have",
-    "if",
-    "in",
-    "install",
-    "is",
-    "it",
-    "language",
-    "more",
-    "not",
-    "of",
-    "on",
-    "open",
-    "or",
-    "package",
-    "press",
-    "runtime",
-    "select",
-    "settings",
-    "speech",
-    "than",
-    "that",
-    "the",
-    "then",
-    "there",
-    "this",
-    "to",
-    "use",
-    "voice",
-    "was",
-    "were",
-    "when",
-    "will",
-    "with",
-    "you",
-    "your",
-}
 
 
 # 5-point rate factor interpolation (inverted from IBMTTS empirical measurements).
@@ -526,27 +370,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
         wx.CallLater(250, prompt_when_ready)
 
     def _engine_library_error_message(self, error: EngineLibraryError) -> str:
-        if error.kind == "unsupportedVersion":
-            found = ", ".join(error.foundVersions) if error.foundVersions else _("another version")
-            return _(
-                "Google TTS For NVDA could not be loaded because the WASM TTS Engine version is not supported.\n\n"
-                "This add-on supports WASM TTS Engine version {supported}, but found: {found}.\n\n"
-                "Install a Google TTS For NVDA package that includes the supported WASM TTS Engine."
-            ).format(supported=error.supportedVersion, found=found)
-        if error.kind == "missing":
-            return _(
-                "Google TTS For NVDA could not be loaded because the WASM TTS Engine library is missing.\n\n"
-                "Reinstall Google TTS For NVDA with the included WASM TTS Engine library."
-            )
-        if error.kind == "incomplete":
-            return _(
-                "Google TTS For NVDA could not be loaded because the WASM TTS Engine library is incomplete.\n\n"
-                "Reinstall Google TTS For NVDA with the complete WASM TTS Engine library."
-            )
-        return _(
-            "Google TTS For NVDA could not be loaded because the WASM TTS Engine voice catalog could not be read.\n\n"
-            "Reinstall Google TTS For NVDA with a supported WASM TTS Engine library."
-        )
+        return engine_library_error_message(error)
 
     def _show_engine_library_error(self, error: EngineLibraryError) -> None:
         try:
@@ -1882,21 +1706,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
         return any(bool(token.strip("'’_-")) for token in _LANGUAGE_WORD_RE.findall(text))
 
     def _language_token_signal(self, token: str, candidateRoots: set[str]) -> tuple[str | None, int]:
-        normalized = token.strip("'’_-").casefold()
-        if not normalized or self._looks_like_url_token(normalized):
-            return None, 0
-        scriptRoot = language_script_signal(normalized, candidateRoots)
-        if scriptRoot is not None:
-            return scriptRoot, 2
-        if "vi" in candidateRoots and any(character in _VIETNAMESE_LETTERS for character in normalized):
-            return "vi", 2
-        viScore = 1 if "vi" in candidateRoots and normalized in _VIETNAMESE_WORDS else 0
-        enScore = 1 if "en" in candidateRoots and normalized in _ENGLISH_WORDS else 0
-        if viScore > enScore:
-            return "vi", viScore
-        if enScore > viScore:
-            return "en", enScore
-        return None, 0
+        return _language_token_signal(token, candidateRoots, is_url_token=self._looks_like_url_token)
 
     def _language_root(self, language: str | None) -> str:
         return self._normalize_language(language).split("-", 1)[0]
@@ -1922,8 +1732,6 @@ class SynthDriver(synthDriverHandler.SynthDriver):
             volume=volume,
             rateBoost=rateBoostVal,
         )
-        options["nvdaRate"] = max(0, min(100, int(rate)))
-        options["rateBoost"] = rateBoostVal
         return options
 
     def _uses_protected_engine_rate(self, packageId: str) -> bool:

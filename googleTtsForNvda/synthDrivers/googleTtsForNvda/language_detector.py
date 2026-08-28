@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import functools
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,13 @@ try:
     from logHandler import log
 except Exception:  # pragma: no cover - NVDA is not available in local unit checks.
     log = None
+
+# Shared sentinel and attribute name used by both the synth driver and the
+# global plugin to attach / retrieve a Google TTS language tag on NVDA
+# LangChangeCommand objects.  Defined once here so both modules use the
+# same object identity for ``is`` checks.
+GOOGLE_TTS_LANG_CHANGE_ATTR: str = "googleTtsForNvdaLanguage"
+MISSING_GOOGLE_TTS_LANGUAGE: object = object()
 
 
 _DLL_DIR = Path(__file__).with_name("cld2")
@@ -219,18 +227,25 @@ def _candidate_for_language(language: str, candidateLanguages: list[str]) -> str
     return None
 
 
+@functools.lru_cache(maxsize=128)
+def _language_match_keys_cached(languageKey: str) -> frozenset[str]:
+    if not languageKey:
+        return frozenset()
+    aliases = {languageKey}
+    aliases.update(_LANGUAGE_ALIASES.get(languageKey, set()))
+    root = languageKey.split("-", 1)[0]
+    aliases.add(root)
+    aliases.update(_LANGUAGE_ALIASES.get(root, set()))
+    if root in _CHINESE_LANGUAGE_ROOTS:
+        aliases.update(_CHINESE_LANGUAGE_ROOTS)
+    return frozenset(aliases)
+
+
 def language_match_keys(language: str | None) -> set[str]:
     languageKey = _normalize_language(language)
     if not languageKey:
         return set()
-    aliases = {languageKey}
-    aliases.update(_language_aliases(languageKey))
-    root = _language_root(languageKey)
-    aliases.add(root)
-    aliases.update(_language_aliases(root))
-    if _language_family(languageKey) == "zh":
-        aliases.update(_CHINESE_LANGUAGE_ROOTS)
-    return aliases
+    return set(_language_match_keys_cached(languageKey))
 
 
 def _language_aliases(languageKey: str) -> set[str]:

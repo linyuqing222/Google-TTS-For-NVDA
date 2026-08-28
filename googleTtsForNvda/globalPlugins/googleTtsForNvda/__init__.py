@@ -37,9 +37,10 @@ from synthDrivers.googleTtsForNvda.bridge import (
     DEFAULT_AUTO_LANGUAGE_PROFILES,
     DEFAULT_BROWSER_RUNTIME,
     DEFAULT_KEEP_BROWSER_RUNTIME_READY,
+    SYNTH_NAME,
     edge_webview2_blocks_effective_runtime,
 )
-from synthDrivers.googleTtsForNvda.catalog import EngineLibraryError, VoiceCatalog
+from synthDrivers.googleTtsForNvda.catalog import EngineLibraryError, VoiceCatalog, engine_library_error_message
 
 from . import updateGui, updater
 from .settings import GoogleTtsSettingsPanel
@@ -58,7 +59,6 @@ config.conf.spec[CONFIG_SECTION] = {
     CONFIG_KEEP_BROWSER_RUNTIME_READY: f"boolean(default={str(DEFAULT_KEEP_BROWSER_RUNTIME_READY).lower()})",
 }
 
-SYNTH_NAME = "googleTtsForNvda"
 _AUTO_LANGUAGE_NOTICE_ID = "notice"
 _dialog: VoiceManagerDialog | None = None
 _originalSetSynth: Any | None = None
@@ -84,8 +84,8 @@ _patchedShortcutKeysShouldUseSpellingFunctionality: Any | None = None
 _patchedSpeechDictLoadVoiceDict: Any | None = None
 _patchedPopupSettingsDialog: Any | None = None
 _autoLanguageSpeechFilterRegistered = False
-_GOOGLE_TTS_LANG_CHANGE_ATTR = "googleTtsForNvdaLanguage"
-_MISSING_GOOGLE_TTS_LANGUAGE = object()
+_GOOGLE_TTS_LANG_CHANGE_ATTR = language_detector.GOOGLE_TTS_LANG_CHANGE_ATTR
+_MISSING_GOOGLE_TTS_LANGUAGE = language_detector.MISSING_GOOGLE_TTS_LANGUAGE
 _missingVoicesPromptActive = False
 _edgeWebView2PromptActive = False
 _speechConfigOverlayLock = threading.RLock()
@@ -226,27 +226,7 @@ def _google_tts_voice_status() -> str:
 
 
 def _engine_library_error_message(error: EngineLibraryError) -> str:
-    if error.kind == "unsupportedVersion":
-        found = ", ".join(error.foundVersions) if error.foundVersions else _("another version")
-        return _(
-            "Google TTS For NVDA could not be loaded because the WASM TTS Engine version is not supported.\n\n"
-            "This add-on supports WASM TTS Engine version {supported}, but found: {found}.\n\n"
-            "Install a Google TTS For NVDA package that includes the supported WASM TTS Engine."
-        ).format(supported=error.supportedVersion, found=found)
-    if error.kind == "missing":
-        return _(
-            "Google TTS For NVDA could not be loaded because the WASM TTS Engine library is missing.\n\n"
-            "Reinstall Google TTS For NVDA with the included WASM TTS Engine library."
-        )
-    if error.kind == "incomplete":
-        return _(
-            "Google TTS For NVDA could not be loaded because the WASM TTS Engine library is incomplete.\n\n"
-            "Reinstall Google TTS For NVDA with the complete WASM TTS Engine library."
-        )
-    return _(
-        "Google TTS For NVDA could not be loaded because the WASM TTS Engine voice catalog could not be read.\n\n"
-        "Reinstall Google TTS For NVDA with a supported WASM TTS Engine library."
-    )
+    return engine_library_error_message(error)
 
 
 def _show_engine_library_error(error: EngineLibraryError) -> None:
@@ -950,15 +930,22 @@ class _VoiceDictionarySynthProxy:
         return getattr(self._synth, name)
 
 
+_activeLoadedVoiceDictVariant: str | None = None
+
+
 def _load_voice_dictionary_for_voice(synth: Any, voice: str) -> bool:
+    global _activeLoadedVoiceDictVariant
     speakerVoiceInfos = getattr(synth, "_speaker_voice_infos", None)
     availableVoices = speakerVoiceInfos() if callable(speakerVoiceInfos) else getattr(synth, "availableVoices", {})
     if not voice or voice not in availableVoices:
         return False
+    if _activeLoadedVoiceDictVariant == voice:
+        return True
     loadVoiceDict = _originalSpeechDictLoadVoiceDict or getattr(speechDictHandler, "loadVoiceDict", None)
     if not callable(loadVoiceDict):
         return False
     loadVoiceDict(_VoiceDictionarySynthProxy(synth, voice))
+    _activeLoadedVoiceDictVariant = voice
     return True
 
 
@@ -994,13 +981,14 @@ def _patch_google_tts_voice_dictionary_loading() -> None:
 
 
 def _unpatch_google_tts_voice_dictionary_loading() -> None:
-    global _originalSpeechDictLoadVoiceDict, _patchedSpeechDictLoadVoiceDict
+    global _originalSpeechDictLoadVoiceDict, _patchedSpeechDictLoadVoiceDict, _activeLoadedVoiceDictVariant
     if _originalSpeechDictLoadVoiceDict is None:
         return
     if getattr(speechDictHandler, "loadVoiceDict", None) is _patchedSpeechDictLoadVoiceDict:
         speechDictHandler.loadVoiceDict = _originalSpeechDictLoadVoiceDict
     _originalSpeechDictLoadVoiceDict = None
     _patchedSpeechDictLoadVoiceDict = None
+    _activeLoadedVoiceDictVariant = None
 
 
 def _filter_auto_language_speech_sequence(speechSequence: list[Any], *args: Any, **kwargs: Any) -> list[Any]:

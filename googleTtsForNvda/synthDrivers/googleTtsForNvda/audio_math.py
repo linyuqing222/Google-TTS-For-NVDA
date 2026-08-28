@@ -67,4 +67,6 @@ def build_speech_options(
         "postPitch": round(postPitch, 3),
         "volume": round(volumeLevel, 4),
         "outputGain": round(outputGain, 4),
+        "nvdaRate": max(0, min(100, int(rate))),
+        "rateBoost": bool(rateBoost),
     }

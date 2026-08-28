@@ -5,6 +5,7 @@ import os
 import threading
 import unicodedata
 import urllib.error
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -22,11 +23,11 @@ from synthDrivers.googleTtsForNvda import bridge as browserBridge
 from synthDrivers.googleTtsForNvda import language_utils, standby, voice_store
 from synthDrivers.googleTtsForNvda.catalog import VoiceCatalog, VoicePackage, is_package_supported_by_engine
 
-from .uiUtils import format_size_mb
+from .uiUtils import format_size_mb, open_synthesizer_dialog
 
 addonHandler.initTranslation()
 
-SYNTH_NAME = "googleTtsForNvda"
+SYNTH_NAME = browserBridge.SYNTH_NAME
 BASE_DIR = Path(__file__).resolve().parents[2]
 LOCALE_DIR = BASE_DIR / "locale"
 _languageSortRulesByLocale: dict[str, dict[str, Any] | None] = {}
@@ -538,22 +539,42 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
         evt.Skip()
 
     def _populate_installed_list(self) -> None:
-        self.installedList.DeleteAllItems()
-        for index, package in enumerate(self.installedPackages):
-            self._insert_package_row(self.installedList, index, package, self._installed_package_status)
-        if self.installedList.ItemCount:
-            self.installedList.Select(0)
-        # Reset the select-all toggle when list contents change.
-        self.installedSelectAllCheck.SetValue(False)
+        self.installedList.Freeze()
+        try:
+            self.installedList.DeleteAllItems()
+            dependentCounts = Counter(
+                installedPackage.dependentVoiceId
+                for installedPackage in self._allInstalledPackages
+                if installedPackage.dependentVoiceId
+            )
+            for index, package in enumerate(self.installedPackages):
+                status = self._installed_package_status(package, dependentCounts.get(package.id, 0))
+                self._insert_package_row(self.installedList, index, package, status)
+            if self.installedList.ItemCount:
+                self.installedList.Select(0)
+            # Reset the select-all toggle when list contents change.
+            self.installedSelectAllCheck.SetValue(False)
+        finally:
+            self.installedList.Thaw()
 
     def _populate_download_list(self) -> None:
-        self.downloadList.DeleteAllItems()
-        for index, package in enumerate(self.downloadPackages):
-            self._insert_package_row(self.downloadList, index, package, self._download_package_status)
-        if self.downloadList.ItemCount:
-            self.downloadList.Select(0)
-        # Reset the select-all toggle when list contents change.
-        self.downloadSelectAllCheck.SetValue(False)
+        self.downloadList.Freeze()
+        try:
+            self.downloadList.DeleteAllItems()
+            dependentCounts = Counter(
+                downloadPackage.dependentVoiceId
+                for downloadPackage in self._allDownloadPackages
+                if downloadPackage.dependentVoiceId and is_package_supported_by_engine(downloadPackage)
+            )
+            for index, package in enumerate(self.downloadPackages):
+                status = self._download_package_status(package, dependentCounts.get(package.id, 0))
+                self._insert_package_row(self.downloadList, index, package, status)
+            if self.downloadList.ItemCount:
+                self.downloadList.Select(0)
+            # Reset the select-all toggle when list contents change.
+            self.downloadSelectAllCheck.SetValue(False)
+        finally:
+            self.downloadList.Thaw()
 
     def _visible_package_sort_key(self, package: VoicePackage) -> tuple[tuple[str, str], str]:
         return (_visible_language_sort_key(get_language_display_name(package.language)), package.id)
@@ -563,14 +584,15 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
         listCtrl: wx.ListCtrl,
         index: int,
         package: VoicePackage,
-        statusProvider: Callable[[VoicePackage], str] | None = None,
+        status: str | Callable[[VoicePackage], str] | None = None,
     ) -> None:
         listCtrl.InsertItem(index, get_language_display_name(package.language))
         listCtrl.SetItem(index, 1, package.id)
         listCtrl.SetItem(index, 2, self._speaker_names(package))
         listCtrl.SetItem(index, 3, self._format_size(package.compressedSize))
-        if statusProvider:
-            listCtrl.SetItem(index, 4, statusProvider(package))
+        if status:
+            statusText = status(package) if callable(status) else status
+            listCtrl.SetItem(index, 4, statusText)
 
     def _direct_installed_dependents(self, package: VoicePackage) -> list[VoicePackage]:
         return [
@@ -586,7 +608,7 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
             if downloadPackage.dependentVoiceId == package.id and is_package_supported_by_engine(downloadPackage)
         ]
 
-    def _installed_package_status(self, package: VoicePackage) -> str:
+    def _installed_package_status(self, package: VoicePackage, dependentCount: int | None = None) -> str:
         if not is_package_supported_by_engine(package):
             return _("Not supported by the bundled engine")
         if package.dependentVoiceId:
@@ -598,23 +620,23 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
                 return _("Not usable. Required package is not usable: {dependency}").format(
                     dependency=package.dependentVoiceId,
                 )
-        dependentCount = len(self._direct_installed_dependents(package))
+        count = len(self._direct_installed_dependents(package)) if dependentCount is None else dependentCount
         if package.dependentVoiceId:
-            if dependentCount:
+            if count:
                 return _("Usable. Requires {dependency}; required by {count} installed packages").format(
                     dependency=package.dependentVoiceId,
-                    count=dependentCount,
+                    count=count,
                 )
             return _("Usable. Requires {dependency}").format(
                 dependency=package.dependentVoiceId,
             )
-        if dependentCount:
+        if count:
             return _("Usable. Required by {count} installed packages").format(
-                count=dependentCount,
+                count=count,
             )
         return _("Usable")
 
-    def _download_package_status(self, package: VoicePackage) -> str:
+    def _download_package_status(self, package: VoicePackage, dependentCount: int | None = None) -> str:
         if not is_package_supported_by_engine(package):
             return _("Not supported by the bundled engine")
         if package.dependentVoiceId:
@@ -625,10 +647,10 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
             return _("Available. Requires package: {dependency}").format(
                 dependency=package.dependentVoiceId,
             )
-        dependentCount = len(self._direct_download_dependents(package))
-        if dependentCount:
+        count = len(self._direct_download_dependents(package)) if dependentCount is None else dependentCount
+        if count:
             return _("Available. Required by {count} downloadable packages").format(
-                count=dependentCount,
+                count=count,
             )
         return _("Available to download")
 
@@ -750,25 +772,7 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
             return False
 
     def _open_synthesizer_dialog(self) -> bool:
-        try:
-            from gui import settingsDialogs
-
-            dialogClass = getattr(settingsDialogs, "SynthesizerSelectionDialog", None)
-            if dialogClass is None:
-                dialogClass = getattr(settingsDialogs, "SynthesizerDialog", None)
-            if dialogClass is None:
-                raise RuntimeError(_("Select Synthesizer dialog class was not found."))
-            gui.mainFrame.popupSettingsDialog(dialogClass)
-            return True
-        except Exception as exc:
-            log.error("Could not open Select Synthesizer dialog: %s", exc)
-            gui.messageBox(
-                _("The Select Synthesizer dialog could not be opened."),
-                _("Google TTS Voice Manager"),
-                wx.OK | wx.ICON_ERROR,
-                self,
-            )
-            return False
+        return open_synthesizer_dialog(self, title=_("Google TTS Voice Manager"))
 
     def _confirm_remove_last_inactive_voice(self, packages: list[VoicePackage]) -> bool:
         packageNames = self._package_list_text(packages)

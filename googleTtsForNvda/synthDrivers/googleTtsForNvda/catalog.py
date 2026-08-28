@@ -252,3 +252,36 @@ class VoiceCatalog:
         for speaker in self.speakers:
             grouped.setdefault(speaker.language, []).append(speaker)
         return grouped
+
+
+def engine_library_error_message(error: EngineLibraryError) -> str:
+    """Build a user-facing error message for an EngineLibraryError.
+
+    Shared by the synth driver and the global plugin so both produce
+    identical wording without duplicating the translation strings.
+    """
+    import builtins
+
+    _: Any = getattr(builtins, "_", str)
+
+    if error.kind == "unsupportedVersion":
+        found = ", ".join(error.foundVersions) if error.foundVersions else _("another version")
+        return _(
+            "Google TTS For NVDA could not be loaded because the WASM TTS Engine version is not supported.\n\n"
+            "This add-on supports WASM TTS Engine version {supported}, but found: {found}.\n\n"
+            "Install a Google TTS For NVDA package that includes the supported WASM TTS Engine."
+        ).format(supported=error.supportedVersion, found=found)
+    if error.kind == "missing":
+        return _(
+            "Google TTS For NVDA could not be loaded because the WASM TTS Engine library is missing.\n\n"
+            "Reinstall Google TTS For NVDA with the included WASM TTS Engine library."
+        )
+    if error.kind == "incomplete":
+        return _(
+            "Google TTS For NVDA could not be loaded because the WASM TTS Engine library is incomplete.\n\n"
+            "Reinstall Google TTS For NVDA with the complete WASM TTS Engine library."
+        )
+    return _(
+        "Google TTS For NVDA could not be loaded because the WASM TTS Engine voice catalog could not be read.\n\n"
+        "Reinstall Google TTS For NVDA with a supported WASM TTS Engine library."
+    )

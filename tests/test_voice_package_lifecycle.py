@@ -455,5 +455,54 @@ class VoicePackageLifecycleTests(unittest.TestCase):
             shutil.rmtree(voices_dir)
 
 
+class CatalogValidationTests(unittest.TestCase):
+    def test_valid_multiple_packages(self) -> None:
+        pkg1 = catalog_module.VoicePackage(
+            id="en-us-x-sfg",
+            fileId="f1",
+            url="https://example.com/en.zvoice",
+            sha256Checksum="a" * 64,
+            compressedSize=100,
+            remote=False,
+            speakers=({"id": "en-1", "speaker": "s1", "language": "en-US"},),
+        )
+        pkg2 = catalog_module.VoicePackage(
+            id="vi-vn-x-gda",
+            fileId="f2",
+            url="https://example.com/vi.zvoice",
+            sha256Checksum="b" * 64,
+            compressedSize=200,
+            remote=False,
+            speakers=({"id": "vi-1", "speaker": "s2", "language": "vi-VN"},),
+        )
+        catalog = catalog_module.VoiceCatalog([pkg1, pkg2])
+        warnings = voice_store.validate_package_catalog(catalog)
+        self.assertEqual(warnings, [])
+
+    def test_warnings_collected_from_later_packages(self) -> None:
+        """Verify warnings in package 2 are not skipped by early return."""
+        pkg1 = catalog_module.VoicePackage(
+            id="en-us-x-sfg",
+            fileId="f1",
+            url="https://example.com/en.zvoice",
+            sha256Checksum="a" * 64,
+            compressedSize=100,
+            remote=False,
+            speakers=({"id": "en-1", "speaker": "s1", "language": "en-US"},),
+        )
+        pkg2 = catalog_module.VoicePackage(
+            id="vi-vn-x-gda",
+            fileId="f2",
+            url="",
+            sha256Checksum="b" * 64,
+            compressedSize=200,
+            remote=False,
+            speakers=(),
+        )
+        catalog = catalog_module.VoiceCatalog([pkg1, pkg2])
+        warnings = voice_store.validate_package_catalog(catalog)
+        self.assertTrue(any("vi-vn-x-gda" in w for w in warnings))
+
+
 if __name__ == "__main__":
     unittest.main()

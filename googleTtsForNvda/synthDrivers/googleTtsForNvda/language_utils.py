@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import os
 
 SPECIAL_NVDA_LOCALES: dict[str, str] = {
@@ -49,6 +50,7 @@ def get_nvda_locale_for_language(lang_code: str | None) -> str:
     return str(normalized or "").strip()
 
 
+@functools.lru_cache(maxsize=64)
 def nvda_locale_exists(locale: str) -> bool:
     """Return True if the given locale exists in NVDA's installation directory."""
     try:
@@ -72,13 +74,14 @@ def resolve_nvda_locale(language: str | None) -> str:
     return "en"
 
 
-def _language_display_candidates(lang_code: str) -> list[str]:
+@functools.lru_cache(maxsize=128)
+def _language_display_candidates(lang_code: str) -> tuple[str, ...]:
     nvdaLocale = get_nvda_locale_for_language(lang_code)
     candidates: list[str] = []
     for candidate in (nvdaLocale, nvdaLocale.split("_", 1)[0] if "_" in nvdaLocale else "", lang_code):
         if candidate and candidate not in candidates:
             candidates.append(candidate)
-    return candidates
+    return tuple(candidates)
 
 
 def get_language_display_name(

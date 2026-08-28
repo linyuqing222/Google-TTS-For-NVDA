@@ -5,6 +5,15 @@ import math
 
 import wx
 
+try:
+    import addonHandler
+
+    addonHandler.initTranslation()
+except Exception:
+
+    def _(message: str) -> str:
+        return message
+
 
 def _from_dip(window: wx.Window, value: int) -> int:
     try:
@@ -101,3 +110,33 @@ def format_size_auto(size: int) -> str:
     if size >= 1024:
         return f"{size / 1024:.1f} KB"
     return f"{size} bytes"
+
+
+def open_synthesizer_dialog(
+    parent: wx.Window | None = None,
+    title: str | None = None,
+) -> bool:
+    """Open NVDA's Select Synthesizer dialog cleanly across NVDA versions."""
+    import gui
+    from logHandler import log
+
+    dialogTitle = title or _("Google TTS For NVDA")
+    try:
+        from gui import settingsDialogs
+
+        dialogClass = getattr(settingsDialogs, "SynthesizerSelectionDialog", None)
+        if dialogClass is None:
+            dialogClass = getattr(settingsDialogs, "SynthesizerDialog", None)
+        if dialogClass is None:
+            raise RuntimeError(_("Select Synthesizer dialog class was not found."))
+        gui.mainFrame.popupSettingsDialog(dialogClass)
+        return True
+    except Exception as exc:
+        log.error("Could not open Select Synthesizer dialog: %s", exc)
+        gui.messageBox(
+            _("The Select Synthesizer dialog could not be opened."),
+            dialogTitle,
+            wx.OK | wx.ICON_ERROR,
+            parent or gui.mainFrame,
+        )
+        return False

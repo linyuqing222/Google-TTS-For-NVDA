@@ -24,6 +24,7 @@ from .bridge import (
     DEFAULT_AUTO_LANGUAGE_PREFERRED,
     DEFAULT_AUTO_LANGUAGE_PROFILES,
     DEFAULT_KEEP_BROWSER_RUNTIME_READY,
+    SYNTH_NAME,
     CdpCancelled,
     ChromeTtsBridge,
     configured_browser_runtime,
@@ -32,7 +33,6 @@ from .bridge import (
 from .catalog import CATALOG_PATH, ENGINE_DIR, ENGINE_VERSION, VoiceCatalog
 from .watcher import DirectoryChangeWatcher
 
-SYNTH_NAME = "googleTtsForNvda"
 ADDON_DIR = Path(__file__).resolve().parents[2]
 _VOICE_WARMUP_TEXT = " "
 
@@ -454,8 +454,6 @@ def _speech_options(
         volume=volume,
         rateBoost=rateBoost,
     )
-    options["nvdaRate"] = max(0, min(100, int(rate)))
-    options["rateBoost"] = bool(rateBoost)
     return options
 
 
@@ -612,6 +610,7 @@ class _StandbyRuntimeManager:
     def _run_refresh(self, generation: int, cancelEvent: threading.Event, reason: str) -> None:
         bridgeForWorker: ChromeTtsBridge | None = None
         bridgeToTerminate: ChromeTtsBridge | None = None
+        catalog: VoiceCatalog | None = None
         try:
             # Early exit: if the bridge is already warm and the signature matches,
             # skip the full refresh to avoid unnecessary browser restarts.
@@ -624,7 +623,8 @@ class _StandbyRuntimeManager:
                             self._start_watchers_locked()
                             log.debug("Google TTS standby browser runtime already warm, skipping refresh.")
                             return
-            catalog = _installed_catalog()
+            if catalog is None:
+                catalog = _installed_catalog()
             if cancelEvent.is_set():
                 raise CdpCancelled()
             if catalog is None:

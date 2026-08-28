@@ -10,7 +10,7 @@ This guide covers what happens when you push code or open a pull request, and ho
 
 Every push and every pull request triggers the **Tests** workflow on GitHub Actions (`.github/workflows/test.yml`). It runs on **Windows** (`windows-latest`) against two Python versions in parallel: **Python 3.11** and **Python 3.12**. Both must pass for a PR to be mergeable.
 
-The workflow uses `fail-fast: false`, so if Python 3.11 fails, 3.12 still finishes running — you'll see all failures at once instead of having to fix them one at a time.
+The workflow uses `fail-fast: false`, so if Python 3.11 fails, 3.12 still finishes running — you'll see all failures at once instead of having to fix them one at a time. It also enforces `permissions: contents: read` for least-privilege security and uses `concurrency` with `cancel-in-progress: true` to automatically cancel obsolete in-flight runs when new commits are pushed.
 
 ### CI Steps (in order)
 
@@ -24,7 +24,7 @@ The workflow runs these checks in sequence:
 
 4. **Unit tests** — `python -m unittest discover -s tests -v` runs all standalone tests. These don't need NVDA installed, so they work on any Windows machine (and Linux/macOS with the right setup).
 
-After all checks finish, CI runs `git clean -fdX` to remove all files listed in `.gitignore` (caches, build artifacts, etc.). This keeps the workspace clean without hardcoding paths — when you add a new entry to `.gitignore`, cleanup follows automatically.
+After all checks finish, CI runs `git clean -fdX` to remove all files listed in `.gitignore` (caches, build artifacts, etc.). This step runs with `if: always()` so cleanup occurs whether prior checks pass or fail, keeping the workspace clean without hardcoding paths.
 
 ### When does CI run?
 
@@ -55,21 +55,26 @@ pip install ruff mypy
 
 You only need to do this once (or when the project updates its tool versions).
 
-### Run all checks at once
+### Auto-fix and run all checks (Recommended)
 
-The mypy command is long, so here's a helper you can paste into PowerShell first:
+To automatically fix auto-fixable lint issues and formatting, then run type checks, unit tests, and cache cleanup:
+
+```powershell
+python -m ruff check --fix ; python -m ruff format ; python -m mypy --config-file mypy.ini --explicit-package-bases --exclude "websocketClientRepo" googleTtsForNvda/synthDrivers/ tests/ googleTtsForNvda/globalPlugins/googleTtsForNvda/__init__.py googleTtsForNvda/globalPlugins/googleTtsForNvda/settings.py googleTtsForNvda/globalPlugins/googleTtsForNvda/updateGui.py googleTtsForNvda/globalPlugins/googleTtsForNvda/uiUtils.py googleTtsForNvda/globalPlugins/googleTtsForNvda/updater.py googleTtsForNvda/globalPlugins/googleTtsForNvda/voiceManager.py ; python -m unittest discover -s tests -v ; git clean -fdX
+```
+
+Or define a PowerShell `$mypy` helper first:
 
 ```powershell
 $mypy = "python -m mypy --config-file mypy.ini --explicit-package-bases --exclude websocketClientRepo googleTtsForNvda/synthDrivers/ tests/ googleTtsForNvda/globalPlugins/googleTtsForNvda/__init__.py googleTtsForNvda/globalPlugins/googleTtsForNvda/settings.py googleTtsForNvda/globalPlugins/googleTtsForNvda/updateGui.py googleTtsForNvda/globalPlugins/googleTtsForNvda/uiUtils.py googleTtsForNvda/globalPlugins/googleTtsForNvda/updater.py googleTtsForNvda/globalPlugins/googleTtsForNvda/voiceManager.py"
+
+# Auto-fix, format, type-check, test, and clean:
+python -m ruff check --fix ; python -m ruff format ; $mypy ; python -m unittest discover -s tests -v ; git clean -fdX
 ```
 
-Then run all CI checks in one go:
+### Strict verification check (CI-style)
 
-```powershell
-python -m ruff check ; python -m ruff format --check ; $mypy ; python -m unittest discover -s tests -v ; git clean -fdX
-```
-
-Or without the helper, the full command:
+To verify without modifying any files (matching CI behavior):
 
 ```powershell
 python -m ruff check ; python -m ruff format --check ; python -m mypy --config-file mypy.ini --explicit-package-bases --exclude "websocketClientRepo" googleTtsForNvda/synthDrivers/ tests/ googleTtsForNvda/globalPlugins/googleTtsForNvda/__init__.py googleTtsForNvda/globalPlugins/googleTtsForNvda/settings.py googleTtsForNvda/globalPlugins/googleTtsForNvda/updateGui.py googleTtsForNvda/globalPlugins/googleTtsForNvda/uiUtils.py googleTtsForNvda/globalPlugins/googleTtsForNvda/updater.py googleTtsForNvda/globalPlugins/googleTtsForNvda/voiceManager.py ; python -m unittest discover -s tests -v ; git clean -fdX
@@ -80,16 +85,13 @@ python -m ruff check ; python -m ruff format --check ; python -m mypy --config-f
 Run any single check by typing the command and pressing **Enter**:
 
 ```powershell
-python -m ruff check            # lint
-python -m ruff format --check   # format
+python -m ruff check --fix      # lint & auto-fix
+python -m ruff format           # format code
+python -m ruff check            # lint check only
+python -m ruff format --check   # format check only
 python -m mypy --config-file mypy.ini --explicit-package-bases --exclude "websocketClientRepo" googleTtsForNvda/synthDrivers/ tests/ googleTtsForNvda/globalPlugins/googleTtsForNvda/__init__.py googleTtsForNvda/globalPlugins/googleTtsForNvda/settings.py googleTtsForNvda/globalPlugins/googleTtsForNvda/updateGui.py googleTtsForNvda/globalPlugins/googleTtsForNvda/uiUtils.py googleTtsForNvda/globalPlugins/googleTtsForNvda/updater.py googleTtsForNvda/globalPlugins/googleTtsForNvda/voiceManager.py   # types
 python -m unittest discover -s tests -v   # tests
-```
-
-If `ruff format --check` fails, fix formatting with:
-
-```powershell
-python -m ruff format
+git clean -fdX                            # clean temporary caches
 ```
 
 ---
@@ -101,6 +103,8 @@ These tests run **without NVDA installed**, so they're safe in any environment:
 | Test file | What it covers |
 |---|---|
 | `test_speech_processing.py` | PCM audio processing, text segmentation, cache keys, pause modes, Unicode coverage |
+| `test_audio_math.py` | Pure audio math, rate/pitch conversions, SeaNet rate protection |
+| `test_language_utils.py` | Language normalization, NVDA special locale mappings, display names |
 | `test_dependency_isolation.py` | Vendored WebSocket isolation, private module anchoring |
 | `test_language_redirect.py` | Language redirect, CLDR alias, cross-variant matching |
 | `test_watcher.py` | File system change watcher lifecycle, callback, and edge cases |

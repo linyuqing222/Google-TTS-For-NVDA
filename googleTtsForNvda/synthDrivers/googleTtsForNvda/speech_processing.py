@@ -7,6 +7,7 @@ synth driver.
 
 from __future__ import annotations
 
+import bisect
 import unicodedata
 from collections.abc import Iterator, Sequence
 from functools import lru_cache
@@ -149,8 +150,22 @@ NO_SPACE_SCRIPT_PROFILES = (
     (((0xAA80, 0xAADF),), 70),
 )
 _FLATTENED_NO_SPACE_RANGES: tuple[tuple[int, int, int], ...] = tuple(
-    (start, end, limit) for ranges, limit in NO_SPACE_SCRIPT_PROFILES for start, end in ranges
+    sorted(
+        ((start, end, limit) for ranges, limit in NO_SPACE_SCRIPT_PROFILES for start, end in ranges),
+        key=lambda item: item[0],
+    )
 )
+_FLATTENED_NO_SPACE_STARTS: tuple[int, ...] = tuple(start for start, _end, _limit in _FLATTENED_NO_SPACE_RANGES)
+
+
+def _find_no_space_range(codepoint: int) -> tuple[int, int, int] | None:
+    idx = bisect.bisect_right(_FLATTENED_NO_SPACE_STARTS, codepoint) - 1
+    if idx >= 0:
+        entry = _FLATTENED_NO_SPACE_RANGES[idx]
+        if entry[0] <= codepoint <= entry[1]:
+            return entry
+    return None
+
 
 COMMON_ABBREVIATIONS = {
     # English
@@ -382,7 +397,8 @@ class PcmSilenceShortener:
         if not pcm:
             return b""
         samples = memoryview(pcm).cast("h")
-        if min(samples) >= -self._noiseFloor and max(samples) <= self._noiseFloor:
+        floor = self._noiseFloor
+        if not any(s < -floor or s > floor for s in samples):
             self._hold_silence(pcm)
             return b""
 
@@ -643,7 +659,7 @@ def _is_no_space_script_character(character: str) -> bool:
     category = unicodedata.category(character)
     if not (category.startswith("L") or category.startswith("M")):
         return False
-    return any(start <= codepoint <= end for start, end, _limit in _FLATTENED_NO_SPACE_RANGES)
+    return _find_no_space_range(codepoint) is not None
 
 
 class TextSegmenter:
@@ -980,11 +996,11 @@ class TextSegmenter:
             if category.startswith("L") or category.startswith("M"):
                 signalCharacters += 1
                 codepoint = ord(character)
-                for start, end, limit in _FLATTENED_NO_SPACE_RANGES:
-                    if start <= codepoint <= end:
-                        noSpaceCharacters += 1
-                        segmentLimit = limit if segmentLimit is None else min(segmentLimit, limit)
-                        break
+                rangeEntry = _find_no_space_range(codepoint)
+                if rangeEntry is not None:
+                    noSpaceCharacters += 1
+                    limit = rangeEntry[2]
+                    segmentLimit = limit if segmentLimit is None else min(segmentLimit, limit)
         if not signalCharacters:
             return None
         if noSpaceCharacters < NO_SPACE_SCRIPT_SIGNAL_MIN_CHARS:
