@@ -75,7 +75,6 @@ from .speech_processing import (
     pcm_has_audible_sample as _pcm_has_audible_sample,
 )
 
-
 addonHandler.initTranslation()
 
 
