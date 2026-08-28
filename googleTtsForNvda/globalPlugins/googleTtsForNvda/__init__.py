@@ -22,7 +22,7 @@ from gui import guiHelper
 from logHandler import log
 from speech import speech as speechModule
 from speech.commands import LangChangeCommand
-from synthDrivers.googleTtsForNvda import standby, voice_store
+from synthDrivers.googleTtsForNvda import language_detector, language_utils, standby, voice_store
 from synthDrivers.googleTtsForNvda.bridge import (
     CONFIG_AUTO_LANGUAGE_CANDIDATES,
     CONFIG_AUTO_LANGUAGE_DETECTION,
@@ -766,37 +766,15 @@ def _unpatch_voice_dictionary_dialog() -> None:
 
 
 def _normalize_language_key(language: str | None) -> str:
-    return str(language or "").replace("_", "-").lower()
+    return language_utils.normalize_language(language)
 
 
 def _language_match_keys(language: str | None) -> set[str]:
-    key = _normalize_language_key(language)
-    if not key:
-        return set()
-    aliases = {key}
-    aliasMap = {
-        "cmn-cn": {"zh-cn"},
-        "zh-cn": {"cmn-cn"},
-        "cmn-tw": {"zh-tw"},
-        "zh-tw": {"cmn-tw"},
-        "yue-hk": {"zh-hk"},
-        "zh-hk": {"yue-hk"},
-        "zh": {"cmn-cn", "cmn-tw", "yue-hk"},
-        "fil-ph": {"tl", "fil"},
-        "tl": {"fil-ph", "fil"},
-        "ar-xa": {"ar"},
-        "ar": {"ar-xa"},
-    }
-    aliases.update(aliasMap.get(key, set()))
-    if key.startswith("fil-"):
-        aliases.update({"fil", "tl"})
-    return aliases
+    return language_detector.language_match_keys(language)
 
 
 def _same_language(left: str | None, right: str | None) -> bool:
-    leftKeys = _language_match_keys(left)
-    rightKeys = _language_match_keys(right)
-    return bool(leftKeys and rightKeys and leftKeys.intersection(rightKeys))
+    return language_detector.language_matches(left, right)
 
 
 def _google_lang_change_command(language: str | None) -> LangChangeCommand:
@@ -813,43 +791,15 @@ def _google_lang_change_language(command: LangChangeCommand) -> object:
 
 
 def _normalize_nvda_locale_for_language(language: str | None) -> str | None:
-    if not language:
-        return language
-    languageText = str(language)
-    languageMap = {
-        "cmn-CN": "zh_CN",
-        "cmn-TW": "zh_TW",
-        "yue-HK": "zh_HK",
-        "ar-XA": "ar",
-        "fil-PH": "tl",
-    }
-    if languageText in languageMap:
-        return languageMap[languageText]
-    lowerLanguage = languageText.lower()
-    if lowerLanguage.startswith("cmn"):
-        return "zh_CN"
-    if lowerLanguage.startswith("yue"):
-        return "zh_HK"
-    return languageText.replace("-", "_")
+    return language_utils.get_nvda_locale_for_language(language) or None
 
 
 def _nvda_locale_exists(locale: str) -> bool:
-    try:
-        return os.path.isdir(os.path.join(globalVars.appDir, "locale", locale))
-    except Exception:
-        return False
+    return language_utils.nvda_locale_exists(locale)
 
 
 def _nvda_locale_for_language(language: str | None) -> str | None:
-    locale = _normalize_nvda_locale_for_language(language)
-    if not locale:
-        return locale
-    if _nvda_locale_exists(locale):
-        return locale
-    rootLocale = locale.split("_", 1)[0]
-    if rootLocale != locale and _nvda_locale_exists(rootLocale):
-        return rootLocale
-    return "en"
+    return language_utils.resolve_nvda_locale(language)
 
 
 def _auto_detect_language_for_speech_filter(synth: Any, text: str) -> str | None:

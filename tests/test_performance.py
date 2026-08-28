@@ -195,5 +195,39 @@ class PauseModePerformanceTests(unittest.TestCase):
         self.assertEqual(0.15, _read_driver_constant("_PRELOAD_RESUME_DELAY_SECONDS"))
 
 
+def _read_harness_constant(name: str) -> int:
+    """Read a packet sizing constant from bridgeHarness.js without running JS."""
+    path = ROOT / "googleTtsForNvda" / "synthDrivers" / "googleTtsForNvda" / "web" / "bridgeHarness.js"
+    text = path.read_text(encoding="utf-8")
+    match = re.search(rf"\bconst\s+{name}\s*=\s*(\d+);", text)
+    if match is None:
+        raise AssertionError(f"Constant {name!r} not found in bridgeHarness.js")
+    return int(match.group(1))
+
+
+class AdaptiveAudioPacketSizingTests(unittest.TestCase):
+    """Verify adaptive audio packet sizing constants in bridgeHarness.js."""
+
+    def test_audio_packet_sizing_constants(self) -> None:
+        """Verify adaptive audio packet constants protect startup latency while reducing steady IPC."""
+        first_samples = _read_harness_constant("firstAudioPacketSamples")
+        early_samples = _read_harness_constant("earlyAudioPacketSamples")
+        steady_samples = _read_harness_constant("steadyAudioPacketSamples")
+        long_samples = _read_harness_constant("longStreamAudioPacketSamples")
+        early_count = _read_harness_constant("earlyAudioPacketCount")
+        steady_count = _read_harness_constant("steadyAudioPacketCount")
+
+        # First packet: 120 samples (5ms at 24kHz) for instant initial response
+        self.assertEqual(120, first_samples)
+        # Early packets: 1200 samples (50ms at 24kHz) for initial 3 packets
+        self.assertEqual(1200, early_samples)
+        self.assertEqual(3, early_count)
+        # Steady packets: 2400 samples (100ms at 24kHz) for packets 4-8
+        self.assertEqual(2400, steady_samples)
+        self.assertEqual(8, steady_count)
+        # Long-stream packets: 3600 samples (150ms at 24kHz) for packets 9+ to cut CDP overhead by 33%
+        self.assertEqual(3600, long_samples)
+
+
 if __name__ == "__main__":
     unittest.main()

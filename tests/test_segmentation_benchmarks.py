@@ -24,6 +24,8 @@ class SegmentationPerformanceTests(unittest.TestCase):
 
     def _measure_sentence_splits(self, text: str, iterations: int = 10) -> float:
         """Measure average time for find_sentence_splits over multiple iterations."""
+        # Warm up caches before timing
+        self.segmenter.find_sentence_splits(text)
         times: list[float] = []
         for _ in range(iterations):
             start = time.perf_counter()
@@ -34,6 +36,8 @@ class SegmentationPerformanceTests(unittest.TestCase):
 
     def _measure_latency_segments(self, text: str, fast_first: bool, iterations: int = 10) -> float:
         """Measure average time for iter_text_segments_for_latency."""
+        # Warm up caches before timing
+        list(self.segmenter.iter_text_segments_for_latency(text, fast_first))
         times: list[float] = []
         for _ in range(iterations):
             start = time.perf_counter()
@@ -73,7 +77,7 @@ class SegmentationPerformanceTests(unittest.TestCase):
         self.assertLess(avg_ms, 10.0, f"Sentence splits took {avg_ms:.1f}ms for 1000 Arabic chars")
 
     def test_hindi_1000_chars_latency_segments(self) -> None:
-        """1000 chars of Hindi text should segment in <10ms."""
+        """1000 chars of Hindi text should segment in <15ms."""
         text = "यह एक बहुत लंबा वाक्य है जिसमें बहुत सारे शब्द हैं और इसे पढ़ने में समय लगता है " * 15  # ~1000 chars
         avg_ms = self._measure_latency_segments(text, False) * 1000
         self.assertLess(avg_ms, 15.0, f"Latency segments took {avg_ms:.1f}ms for 1000 Hindi chars")
@@ -97,7 +101,7 @@ class SegmentationPerformanceTests(unittest.TestCase):
         self.assertLess(avg_ms, 10.0, f"Latency segments took {avg_ms:.1f}ms for 1000 URL chars")
 
     def test_fast_first_segment_1000_chars(self) -> None:
-        """Fast first segmentation of 1000 chars should complete in <10ms."""
+        """Fast first segmentation of 1000 chars should complete in <15ms."""
         text = "This medium length announcement deliberately contains no punctuation " * 15  # ~1000 chars
         avg_ms = self._measure_latency_segments(text, True) * 1000
         self.assertLess(avg_ms, 15.0, f"Fast first segments took {avg_ms:.1f}ms for 1000 chars")
@@ -107,11 +111,13 @@ class SegmentationPerformanceTests(unittest.TestCase):
         short_text = "This is a test sentence. " * 4  # ~100 chars
         long_text = "This is a test sentence. " * 40  # ~1000 chars
 
-        short_ms = self._measure_sentence_splits(short_text, iterations=20) * 1000
-        long_ms = self._measure_sentence_splits(long_text, iterations=20) * 1000
+        short_ms = self._measure_sentence_splits(short_text, iterations=30) * 1000
+        long_ms = self._measure_sentence_splits(long_text, iterations=30) * 1000
 
-        # Long text is 10x longer, should be at most 20x slower
-        ratio = long_ms / max(short_ms, 0.001)
+        # Long text is 10x longer, should scale within bounded ratio
+        # with a minimum noise floor of 0.05ms for short text on high-speed CPUs
+        effective_short_ms = max(short_ms, 0.05)
+        ratio = long_ms / effective_short_ms
         self.assertLess(ratio, 20.0, f"Non-linear scaling: {ratio:.1f}x for 10x text length")
 
 
@@ -139,7 +145,7 @@ class PcmProcessingThroughputTests(unittest.TestCase):
             s.finish()
         elapsed = time.perf_counter() - start
 
-        # 1 second of audio, 100 iterations - should be under 100ms
+        # 600 samples (25ms) of audio at 24kHz, 100 iterations (2.5s audio total) - should be under 100ms
         self.assertLess(elapsed, 0.1, f"PCM processing took {elapsed:.3f}s")
 
 

@@ -33,7 +33,7 @@ from speech.commands import (
 )
 from synthDriverHandler import VoiceInfo, synthDoneSpeaking, synthIndexReached
 
-from . import language_detector, standby, voice_store
+from . import audio_math, language_detector, language_utils, standby, voice_store
 from .bridge import (
     CONFIG_AUTO_LANGUAGE_CANDIDATES,
     CONFIG_AUTO_LANGUAGE_DETECTION,
@@ -74,6 +74,9 @@ from .speech_processing import (
 from .speech_processing import (
     pcm_has_audible_sample as _pcm_has_audible_sample,
 )
+from .speech_processing import (
+    pcm_tail_is_silence as _pcm_tail_is_silence,
+)
 
 addonHandler.initTranslation()
 
@@ -81,11 +84,11 @@ addonHandler.initTranslation()
 _SHORT_CACHE_MAX_ITEMS = 4096
 _SHORT_CACHE_MAX_BYTES = 150 * 1024 * 1024
 _SHORT_CACHE_STATS_LOG_INTERVAL = 256
-_OUTPUT_GAIN_MAKEUP = 1.70
+_OUTPUT_GAIN_MAKEUP = audio_math.OUTPUT_GAIN_MAKEUP
 # SeaNet can handle mild native speedup; keep JS tempo processing for higher rates.
-_PROTECTED_ENGINE_RATE = 1.18
-_MIN_ARTIFICIAL_RATE = 0.5
-_MAX_ARTIFICIAL_RATE = 2.2
+_PROTECTED_ENGINE_RATE = audio_math.PROTECTED_ENGINE_RATE
+_MIN_ARTIFICIAL_RATE = audio_math.MIN_ARTIFICIAL_RATE
+_MAX_ARTIFICIAL_RATE = audio_math.MAX_ARTIFICIAL_RATE
 _NORMAL_SENTENCE_BREAK_MS = 45
 _SHORTENED_SENTENCE_BREAK_MS = 15
 _BREAK_RATE_FACTOR_MIN = 0.4
@@ -714,13 +717,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
         return voices
 
     def _language_display_name(self, language: str) -> str:
-        try:
-            description = languageHandler.getLanguageDescription(language.replace("-", "_"))
-            if description:
-                return description
-        except Exception:
-            log.debug("Could not resolve Google TTS language display name.", exc_info=True)
-        return language
+        return language_utils.get_language_display_name(language)
 
     def _build_speakers_by_package(self) -> dict[str, list[Any]]:
         speakersByPackage: dict[str, list[Any]] = {}
@@ -790,17 +787,36 @@ class SynthDriver(synthDriverHandler.SynthDriver):
             pass
         return next(iter(variants))
 
-    def _ensure_variant_config_compat(self) -> None:
+    def _ensure_config_compat(self) -> None:
         try:
             synthConfig = config.conf["speech"][self.name]
         except Exception:
             return
+
+        # Ensure default values for all standard supported settings that use config.
+        # This prevents NVDA's synthDriverHandler.SynthDriver.loadSettings() from crashing
+        # with KeyError when evaluating `c[s.id] is None` on older profiles or profiles
+        # created while Automatic Language Profiles was enabled (e.g. rateBoost, pauseMode).
+        for setting in self._STANDARD_SUPPORTED_SETTINGS:
+            if not getattr(setting, "useConfig", True):
+                continue
+            settingId = getattr(setting, "id", None)
+            if not settingId or settingId in ("voice", "variant"):
+                continue
+            try:
+                if settingId not in synthConfig or synthConfig[settingId] is None:
+                    defaultVal = getattr(setting, "defaultVal", None)
+                    if defaultVal is not None:
+                        synthConfig[settingId] = defaultVal
+            except Exception:
+                log.debug("Could not ensure Google TTS setting default for %s.", settingId, exc_info=True)
+
         try:
             configuredVoice = str(synthConfig.get("voice") or "")
         except Exception:
             configuredVoice = ""
         try:
-            configuredVariant = str(synthConfig["variant"] or "")
+            configuredVariant = str(synthConfig.get("variant") or "")
         except Exception:
             configuredVariant = ""
 
@@ -829,8 +845,10 @@ class SynthDriver(synthDriverHandler.SynthDriver):
         except Exception:
             log.debug("Could not migrate Google TTS voice/variant settings.", exc_info=True)
 
+    _ensure_variant_config_compat = _ensure_config_compat
+
     def loadSettings(self, onlyChanged: bool = False, *args: Any, **kwargs: Any) -> None:
-        self._ensure_variant_config_compat()
+        self._ensure_config_compat()
         super().loadSettings(onlyChanged, *args, **kwargs)
 
     def _iter_speech_chunks(
@@ -1896,34 +1914,23 @@ class SynthDriver(synthDriverHandler.SynthDriver):
     ) -> dict[str, Any]:
         speaker = self.catalog.speaker_for_voice(voice or self._current_speaker_id())
         package = self.catalog.package_for_voice(speaker.id)
-        volumeLevel = max(0.0, min(1.0, volume / 100.0))
-        outputGain = max(0.0, min(_OUTPUT_GAIN_MAKEUP, volumeLevel * _OUTPUT_GAIN_MAKEUP))
-        desiredRate = self._rate_to_chrome(rate, rateBoost)
-        engineRate = desiredRate
-        artificialRate = 1.0
-        usesProtectedEngineRate = self._uses_protected_engine_rate(package.id)
-        pitchValue = self._pitch_to_chrome(pitch)
-        enginePitch = 1.0 if usesProtectedEngineRate else pitchValue
-        postPitch = pitchValue if usesProtectedEngineRate else 1.0
-        if usesProtectedEngineRate and desiredRate > _PROTECTED_ENGINE_RATE:
-            engineRate = _PROTECTED_ENGINE_RATE
-            artificialRate = max(_MIN_ARTIFICIAL_RATE, min(_MAX_ARTIFICIAL_RATE, desiredRate / engineRate))
-        return {
-            "voiceId": speaker.id,
-            "voiceName": speaker.name,
-            "lang": speaker.language,
-            "rate": round(engineRate, 3),
-            "artificialRate": round(artificialRate, 3),
-            "pitch": round(enginePitch, 3),
-            "postPitch": round(postPitch, 3),
-            "volume": round(volumeLevel, 4),
-            "outputGain": round(outputGain, 4),
-            "nvdaRate": max(0, min(100, int(rate))),
-            "rateBoost": bool(self._rateBoost if rateBoost is None else rateBoost),
-        }
+        rateBoostVal = bool(self._rateBoost if rateBoost is None else rateBoost)
+        options = audio_math.build_speech_options(
+            speaker_id=speaker.id,
+            speaker_name=speaker.name,
+            lang=speaker.language,
+            package_id=package.id,
+            rate=rate,
+            pitch=pitch,
+            volume=volume,
+            rateBoost=rateBoostVal,
+        )
+        options["nvdaRate"] = max(0, min(100, int(rate)))
+        options["rateBoost"] = rateBoostVal
+        return options
 
     def _uses_protected_engine_rate(self, packageId: str) -> bool:
-        return packageId.lower().endswith("-seanet")
+        return audio_math.uses_protected_engine_rate(packageId)
 
     def _voice_for_language(self, lang: str | None, fallbackVoice: str) -> str:
         if not lang:
@@ -1962,7 +1969,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
         return self._current_speaker_id()
 
     def _normalize_language(self, lang: str | None) -> str:
-        return str(lang or "").replace("_", "-").lower()
+        return language_utils.normalize_language(lang)
 
     def _language_match_keys(self, language: str | None) -> set[str]:
         key = self._normalize_language(language)
@@ -1974,16 +1981,10 @@ class SynthDriver(synthDriverHandler.SynthDriver):
         return language_detector.language_matches(left, right)
 
     def _rate_to_chrome(self, value: int, rateBoost: bool | None = None) -> float:
-        percent = max(0, min(100, value)) / 100.0
-        rate = 0.35 + (2.0 - 0.35) * percent
-        boostEnabled = self._rateBoost if rateBoost is None else bool(rateBoost)
-        if boostEnabled:
-            rate *= 2
-        return round(max(0.1, min(10.0, rate)), 3)
+        return audio_math.rate_to_chrome(value, bool(self._rateBoost if rateBoost is None else rateBoost))
 
     def _pitch_to_chrome(self, pitch: int) -> float:
-        pitchSemitones = -12.0 + 24.0 * max(0, min(100, pitch)) / 100.0
-        return round(max(0.1, min(3.0, 1.0 + pitchSemitones / 20.0)), 3)
+        return audio_math.pitch_to_chrome(pitch)
 
     def _get_voice(self) -> str:
         return self.__voice
@@ -2151,35 +2152,10 @@ class SynthDriver(synthDriverHandler.SynthDriver):
         thread.start()
 
     def _get_language(self) -> str:
-        lang = self.__voice
-        langMap = {
-            "cmn-CN": "zh_CN",
-            "cmn-TW": "zh_TW",
-            "yue-HK": "zh_HK",
-            "ar-XA": "ar",
-            "fil-PH": "tl",
-        }
-        lowerLang = lang.lower()
-        if lang in langMap:
-            nvdaLocale = langMap[lang]
-        elif lowerLang.startswith("cmn"):
-            nvdaLocale = "zh_CN"
-        elif lowerLang.startswith("yue"):
-            nvdaLocale = "zh_HK"
-        else:
-            nvdaLocale = lang.replace("-", "_")
-        if self._nvda_locale_exists(nvdaLocale):
-            return nvdaLocale
-        rootLocale = nvdaLocale.split("_", 1)[0]
-        if rootLocale != nvdaLocale and self._nvda_locale_exists(rootLocale):
-            return rootLocale
-        return "en"
+        return language_utils.resolve_nvda_locale(self.__voice)
 
     def _nvda_locale_exists(self, locale: str) -> bool:
-        try:
-            return os.path.isdir(os.path.join(globalVars.appDir, "locale", locale))
-        except Exception:
-            return False
+        return language_utils.nvda_locale_exists(locale)
 
     def _get_rate(self) -> int:
         return self._rate

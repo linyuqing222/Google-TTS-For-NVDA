@@ -15,7 +15,7 @@ from gui import guiHelper, nvdaControls
 from gui.settingsDialogs import SettingsPanel
 from logHandler import log
 from synthDrivers.googleTtsForNvda import bridge as browserBridge
-from synthDrivers.googleTtsForNvda import standby, voice_store
+from synthDrivers.googleTtsForNvda import language_utils, standby, voice_store
 from synthDrivers.googleTtsForNvda.catalog import Speaker, VoiceCatalog
 
 from . import updateGui
@@ -29,7 +29,7 @@ _pendingRuntimeChange: str | None = None
 
 
 def _normalize_language_code(language: str | None) -> str:
-    return str(language or "").strip().replace("_", "-")
+    return language_utils.normalize_language_code(language)
 
 
 def _parse_language_codes(value: str | None) -> list[str]:

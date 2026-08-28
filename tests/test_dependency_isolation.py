@@ -12,10 +12,12 @@ from tests.test_support import DRIVER_DIR, ROOT, load_driver_module
 VENDORED_WEBSOCKET_ROOT = DRIVER_DIR / "websocketClientRepo" / "websocket"
 GLOBAL_PLUGIN_DIR = ROOT / "googleTtsForNvda" / "globalPlugins" / "googleTtsForNvda"
 DRIVER_INTERNAL_MODULES = {
+    "audio_math",
     "bridge",
     "catalog",
     "language_detector",
     "language_profiles",
+    "language_utils",
     "speech_processing",
     "standby",
     "unicode_data",
@@ -23,6 +25,7 @@ DRIVER_INTERNAL_MODULES = {
     "watcher",
     "websocketClientRepo",
 }
+
 GLOBAL_PLUGIN_INTERNAL_MODULES = {
     "settings",
     "updater",

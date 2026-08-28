@@ -6,9 +6,6 @@ exclude = [
     "googleTtsForNvda/synthDrivers/googleTtsForNvda/WasmTtsEngine",
     "googleTtsForNvda/synthDrivers/googleTtsForNvda/cld2",
     "googleTtsForNvda/synthDrivers/googleTtsForNvda/web",
-    "__pycache__",
-    "dist",
-    "*.nvda-addon",
 ]
 
 [lint]

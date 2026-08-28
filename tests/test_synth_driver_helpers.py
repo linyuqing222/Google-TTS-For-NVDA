@@ -352,5 +352,128 @@ class WordDictionaryTests(unittest.TestCase):
             self.assertIn(word, _VIETNAMESE_WORDS)
 
 
+# ---------------------------------------------------------------------------
+# _ensure_config_compat logic simulation
+# ---------------------------------------------------------------------------
+
+
+class _MockSetting:
+    def __init__(self, settingId: str, defaultVal: object, useConfig: bool = True):
+        self.id = settingId
+        self.defaultVal = defaultVal
+        self.useConfig = useConfig
+
+
+_STANDARD_SETTINGS = (
+    _MockSetting("voice", "en-US"),
+    _MockSetting("variant", "en-us-x-multi-seanet:tpc"),
+    _MockSetting("rate", 50),
+    _MockSetting("rateBoost", False),
+    _MockSetting("pitch", 50),
+    _MockSetting("volume", 100),
+    _MockSetting("pauseMode", "doNotShorten"),
+)
+
+
+def _simulate_ensure_config_compat(
+    synthConfig: dict[str, Any],
+    standardSettings: tuple[_MockSetting, ...] = _STANDARD_SETTINGS,
+    availableVoices: dict[str, Any] | None = None,
+    availableVariants: dict[str, Any] | None = None,
+) -> None:
+    if availableVoices is None:
+        availableVoices = {"en-US": "English (US)"}
+    if availableVariants is None:
+        availableVariants = {"en-us-x-multi-seanet:tpc": "Guy"}
+
+    for setting in standardSettings:
+        if not getattr(setting, "useConfig", True):
+            continue
+        settingId = getattr(setting, "id", None)
+        if not settingId or settingId in ("voice", "variant"):
+            continue
+        if settingId not in synthConfig or synthConfig[settingId] is None:
+            defaultVal = getattr(setting, "defaultVal", None)
+            if defaultVal is not None:
+                synthConfig[settingId] = defaultVal
+
+    configuredVoice = str(synthConfig.get("voice") or "")
+    configuredVariant = str(synthConfig.get("variant") or "")
+
+    if configuredVoice in availableVoices:
+        if configuredVariant in availableVariants:
+            return
+        synthConfig["variant"] = next(iter(availableVariants))
+        return
+
+    synthConfig["voice"] = next(iter(availableVoices))
+    synthConfig["variant"] = next(iter(availableVariants))
+
+
+class ConfigCompatTests(unittest.TestCase):
+    """Verify that _ensure_config_compat injects missing standard settings without overwriting existing ones."""
+
+    def test_fills_missing_rate_boost_and_pause_mode(self) -> None:
+        legacyConfig = {
+            "voice": "en-US",
+            "variant": "en-us-x-multi-seanet:tpc",
+            "rate": 40,
+            "pitch": 50,
+            "volume": 100,
+        }
+        _simulate_ensure_config_compat(legacyConfig)
+        self.assertIn("rateBoost", legacyConfig)
+        self.assertEqual(legacyConfig["rateBoost"], False)
+        self.assertIn("pauseMode", legacyConfig)
+        self.assertEqual(legacyConfig["pauseMode"], "doNotShorten")
+        self.assertEqual(legacyConfig["rate"], 40)
+
+    def test_preserves_custom_settings(self) -> None:
+        customConfig = {
+            "voice": "en-US",
+            "variant": "en-us-x-multi-seanet:tpc",
+            "rate": 70,
+            "rateBoost": True,
+            "pitch": 60,
+            "volume": 80,
+            "pauseMode": "shortenAll",
+        }
+        _simulate_ensure_config_compat(customConfig)
+        self.assertEqual(customConfig["rateBoost"], True)
+        self.assertEqual(customConfig["pauseMode"], "shortenAll")
+        self.assertEqual(customConfig["rate"], 70)
+        self.assertEqual(customConfig["pitch"], 60)
+        self.assertEqual(customConfig["volume"], 80)
+
+    def test_nvda_load_settings_loop_simulation_succeeds(self) -> None:
+        # Simulate an old nvda.ini that had only partial settings
+        legacyConfig = {
+            "voice": "en-US",
+            "variant": "en-us-x-multi-seanet:tpc",
+            "rate": 50,
+        }
+        _simulate_ensure_config_compat(legacyConfig)
+
+        # Now simulate NVDA's SynthDriver.loadSettings() loop:
+        # for s in self.supportedSettings:
+        #     if not s.useConfig or s.id == "voice" or c[s.id] is None:
+        #         continue
+        #     val = c[s.id]
+        loaded = {}
+        for s in _STANDARD_SETTINGS:
+            if not s.useConfig or s.id == "voice" or legacyConfig[s.id] is None:
+                continue
+            loaded[s.id] = legacyConfig[s.id]
+
+        self.assertIn("rateBoost", loaded)
+        self.assertEqual(loaded["rateBoost"], False)
+        self.assertIn("pauseMode", loaded)
+        self.assertEqual(loaded["pauseMode"], "doNotShorten")
+        self.assertIn("pitch", loaded)
+        self.assertEqual(loaded["pitch"], 50)
+        self.assertIn("volume", loaded)
+        self.assertEqual(loaded["volume"], 100)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -86,12 +86,14 @@ Google-TTS-For-NVDA/
 │  ├─ LICENSE            Packaged copy of the add-on's GPL-2.0 license
 │  ├─ synthDrivers/googleTtsForNvda/
 │  │  ├─ __init__.py        SynthDriver; NVDA integration and settings ring
+│  │  ├─ audio_math.py      Pure audio math, rate/pitch conversions, SeaNet rate protection
 │  │  ├─ bridge.py          ChromeTtsBridge; HTTP server, browser lifecycle, CDP/WS
 │  │  ├─ standby.py         Optional background browser-runtime readiness manager
 │  │  ├─ watcher.py         Reusable Win32 directory-change watcher with heartbeat logging
 │  │  ├─ catalog.py         VoiceCatalog, VoicePackage, Speaker models
 │  │  ├─ language_detector.py
 │  │  │                    CLD2-backed language detection with x86/x64 DLL selection
+│  │  ├─ language_utils.py  Language normalization, NVDA special locale mappings, display names
 │  │  ├─ voice_store.py     Download, copy, verify, remove voice packages
 │  │  ├─ web/
 │  │  │  ├─ index.html      Loaded in the headless Chromium browser runtime
@@ -109,6 +111,7 @@ Google-TTS-For-NVDA/
 │  ├─ globalPlugins/googleTtsForNvda/
 │  │  ├─ __init__.py        Tools menu integration
 │  │  ├─ settings.py        Google TTS settings panel
+│  │  ├─ uiUtils.py         Shared UI utilities, read-only text focus handling, size formatting
 │  │  ├─ updater.py         Add-on update manifest/download/verification core
 │  │  ├─ updateGui.py       Add-on update check/download/install UI flow
 │  │  └─ voiceManager.py    wx Voice Manager dialog
@@ -417,8 +420,11 @@ Automatic language profiles deliberately have their own profile system and must 
   - `googleTtsForNvda/globalPlugins/googleTtsForNvda/__init__.py` voice dictionary and character/spelling overlays: `_patch_auto_language_voice_dictionary()`, `_unpatch_auto_language_voice_dictionary()`, `_auto_profile_character_settings_for_language()`, `_auto_profile_character_context_for_text()`, `_single_auto_profile_character_settings()`, `process_text_with_auto_voice_dictionary()`, `get_spelling_speech_with_auto_profile()`, and `should_use_spelling_functionality_with_auto_profile()`.
   - `googleTtsForNvda/synthDrivers/googleTtsForNvda/__init__.py` settings-ring notice integration: `SynthDriver.supportedSettings`, `ReadOnlyTextDriverSetting`, `_get_availableNotices()`, `_auto_language_notice_message()`, `_get_notice()`, and `_set_notice()`.
   - `googleTtsForNvda/globalPlugins/googleTtsForNvda/settings.py` settings UI storage and validation: `_installed_speakers_by_language()`, `_current_speech_defaults()`, `_configured_auto_language_detection()`, `_configured_auto_language_preferred()`, `_configured_auto_language_candidates()`, `_configured_auto_language_profiles()`, `_select_preferred_auto_language()`, `_refresh_preferred_language_choices()`, `_ensure_auto_language_profiles()`, `_default_voice_for_language()`, `_valid_profile_variant()`, `_load_selected_auto_language_profile()`, `_store_selected_auto_language_profile()`, `_enabled_auto_language_candidates()`, `_auto_language_status_message()`, `_refresh_auto_language_controls()`, `_refresh_auto_language_profile_value_controls()`, `_save_auto_language_settings()`, and `_refresh_synth_settings_ring(reloadSpeechSettings=False)`.
+  - `googleTtsForNvda/synthDrivers/googleTtsForNvda/language_utils.py` normalized locale resolution and display name helpers: `SPECIAL_NVDA_LOCALES`, `normalize_language()`, `normalize_language_code()`, `get_nvda_locale_for_language()`, `nvda_locale_exists()`, `resolve_nvda_locale()`, and `get_language_display_name()`.
+  - `googleTtsForNvda/synthDrivers/googleTtsForNvda/audio_math.py` pure audio conversions and speech options: `OUTPUT_GAIN_MAKEUP`, `PROTECTED_ENGINE_RATE`, `MIN_ARTIFICIAL_RATE`, `MAX_ARTIFICIAL_RATE`, `rate_to_chrome()`, `pitch_to_chrome()`, `uses_protected_engine_rate()`, and `build_speech_options()`.
   - `googleTtsForNvda/synthDrivers/googleTtsForNvda/language_detector.py` detection wrapper: `_DLL_DIR`, `_DLL_NAMES`, `_LANGUAGE_ALIASES`, `_CHINESE_LANGUAGE_ROOTS`, `_LANGUAGE_REDIRECTS` (dialect → best available redirect, modeled after Google TTS APK's `LanguageRegistry`), `DetectionResult`, `_Cld2Detector.detect()`, `_Cld2Detector._load_library()`, `detect_language()`, `_candidate_for_language()`, `language_match_keys()`, `_language_aliases()`, `_language_family()`, `_language_root()`, `_normalize_language()`, and `redirect_language()`.
   - `googleTtsForNvda/synthDrivers/googleTtsForNvda/voice_store.py` package validation: `is_package_installed()` (SHA256 + file size + persistent cache), `validate_package_catalog()` (catalog integrity check for speaker IDs, languages, and metadata consistency).
+
 
 ### Volatile RAM speech cache
 
@@ -450,7 +456,7 @@ Automatic language profiles deliberately have their own profile system and must 
   - `tests/test_unicode_data.py`: `UnicodeDataTests`.
   - `tests/test_dependency_isolation.py`: `BundledDependencyIsolationTests`, `VENDORED_WEBSOCKET_ROOT`, `DRIVER_INTERNAL_MODULES`, `GLOBAL_PLUGIN_INTERNAL_MODULES`, and `NVDA_ONLY_MODULES`.
   - `tests/test_runtime_recovery.py`: `RuntimeRecoveryTests`, `_FailingEngine`, `_browser_speech_error()`, and `_runtime_bridge()`.
-  - `tests/test_performance.py`: `SegmentFlushThresholdTests`, `SpeechCoalescingTests`, `PcmLeadBufferPerformanceTests`, `PauseModePerformanceTests`, and `_read_driver_constant()`.
+  - `tests/test_performance.py`: `SegmentFlushThresholdTests`, `SpeechCoalescingTests`, `PcmLeadBufferPerformanceTests`, `PauseModePerformanceTests`, `AdaptiveAudioPacketSizingTests`, and `_read_driver_constant()`.
   - `tests/test_bridge_concurrency.py`: `EnsureConnectionLockScopeTests`, `EngineCaptureUnderLockTests`, and `RuntimeBusyLockTests`.
   - `tests/test_bridge_helpers.py`: `SafeJoinTests`, `NormalizeBrowserRuntimeTests`, `RuntimeFallbackOrderTests`, `FormatBytesTests`, `TransientErrorClassificationTests`, `RuntimeRecycleClassificationTests`, `RaiseIfCancelledTests`, `BrowserRuntimeForPathTests`, `FriendlyCdpErrorTests`, `BrowserRuntimeSnapshotTests`, `EdgeWebview2BlocksTests`, `EffectiveBrowserRuntimeTests`, `ConfiguredBrowserRuntimeTests`, `BrowserExecutableAvailableTests`, `BrowserAvailabilityTests`, and `BrowserChoicesTests`.
   - `tests/test_build_i18n_helpers.py`: `ParsePoTests`, `FormatSetTests`, `NormalizeLanguageCodeTests`, `PoEscapeTests`, `PurgeObsoleteTests`, `ManifestValuesTests`, and `MessagePreviewTests`.
@@ -459,10 +465,14 @@ Automatic language profiles deliberately have their own profile system and must 
   - `tests/test_segmentation_benchmarks.py`: `SegmentationPerformanceTests` and `PcmProcessingThroughputTests`.
   - `tests/test_segmentation_fuzz.py`: `SegmentationFuzzTests` and `SentenceSplitFuzzTests`.
   - `tests/test_standby_concurrency.py`: `GenerationCounterTests`, `CancelEventTests`, `ClaimBridgeTests`, `ReleaseSynthBridgeTests`, and `TerminateTests`.
-  - `tests/test_synth_driver_helpers.py`: `InterpolateRateFactorTests`, `BreakRateFactorTests`, `EndOfUtteranceRateFactorTests`, `LanguageWordRegexTests`, and `WordDictionaryTests`.
+  - `tests/test_synth_driver_helpers.py`: `InterpolateRateFactorTests`, `BreakRateFactorTests`, `EndOfUtteranceRateFactorTests`, `LanguageWordRegexTests`, `WordDictionaryTests`, and `ConfigCompatTests`.
   - `tests/test_watcher.py`: `DirectoryChangeWatcherLifecycleTests`, `DirectoryChangeWatcherCallbackTests`, `DirectoryChangeWatcherEdgeCaseTests`, and `DirectoryChangeWatcherIntegrationTests`.
+  - `tests/test_audio_math.py`: `AudioMathTests`.
+  - `tests/test_language_utils.py`: `LanguageUtilsTests`.
+
   - `tests/test_updater_security.py`: `Sha256ValidationTests`, `SizeValidationTests`, `PathTraversalTests`, `HttpsOnlyTests`, `ManifestParsingTests`, `UpdateSizeLimitTests`, `VersionComparisonTests`, `StripManifestValueTests`, `VersionPartsTests`, `UpdateAvailabilityTests`, `RequiredStringTests`, `OptionalStringTests`, `LocaleKeyTests`, `ReleaseNotesTests`, and `UpdateFileNameTests`.
   - `tests/test_voice_package_lifecycle.py`: `CatalogLoadingTests`, `PackageVerificationTests`, `PackageRemovalTests`, `PackageCopyTests`, and `VoicePackageLifecycleTests`.
+
 
 ---
 
@@ -474,7 +484,7 @@ Automatic language profiles deliberately have their own profile system and must 
 - Preserve compatibility across the NVDA version range declared in `googleTtsForNvda/manifest.ini` on both 32-bit (x86) and 64-bit (x64) builds. When hooking NVDA APIs whose signatures changed across supported versions, use compatibility wrappers like the `setSynth` hook rather than assuming only one signature.
 - When a task provides or names a local NVDA source-code directory, inspect the relevant NVDA versions available there and prefer an implementation compatible across those versions, especially for scripts, input gestures, settings dialogs, speech processing hooks, and other NVDA internals used by this add-on.
 - Any add-on callable that replaces, wraps, or is called directly by an NVDA API should accept and forward `*args, **kwargs` unless NVDA's API contract requires an exact signature. This is intentional compatibility hardening for both old and new NVDA releases; do not simplify wrappers back to a fixed signature just because one inspected NVDA version currently works.
-- When adding a new persisted NVDA synth setting such as `VariantSetting()`, protect existing user configs before NVDA's `SynthDriver.loadSettings()` reads the new key. Google TTS does this through `SynthDriver._ensure_variant_config_compat()` and the `loadSettings()` override: create a valid `variant` key when old configs lack it, and migrate old `voice` speaker IDs to the new model where `voice` is the Google language and `variant` is the speaker/voice ID. Without this, supported NVDA builds can raise `KeyError` for the new setting and report a generic "could not load synthesizer" error.
+- When adding a new persisted NVDA synth setting such as `RateBoostSetting()`, `VariantSetting()`, or `_PAUSE_MODE_SETTING`, protect existing user configs before NVDA's `SynthDriver.loadSettings()` reads the new key. Google TTS does this through `SynthDriver._ensure_config_compat()` (aliased as `_ensure_variant_config_compat()`) and the `loadSettings()` override: populate default values for all standard supported settings (`rateBoost`, `pauseMode`, `pitch`, `volume`, etc.) when old configs lack them, create a valid `variant` key when old configs lack it, and migrate old `voice` speaker IDs to the new model where `voice` is the Google language and `variant` is the speaker/voice ID. Without this, supported NVDA builds can raise `KeyError` for missing settings in `SynthDriver.loadSettings()` (evaluating `c[s.id] is None`) and report a generic "could not load synthesizer" error.
 - Follow NVDA's `VariantSetting()` pattern from eSpeak: implement `_get_variant()`, `_set_variant()`, and `_getAvailableVariants()`, and keep dynamic variant lists in the `_availableVariants` cache when needed. Do not assign to `self.availableVariants` directly, because that can shadow NVDA's auto-property and break settings loading/caching.
 - Synth switching wrappers preserve compatibility with `setSynth` signatures across NVDA versions; do not replace them with a single assumed signature.
 - Voice dictionary/settings dialog wrappers for NVDA internals must keep `*args, **kwargs`, forward unknown arguments, keep the destroyed-panel `AutoSettingsMixin.refreshGui` guard, and unpatch only if the current callable is the one installed by this add-on.

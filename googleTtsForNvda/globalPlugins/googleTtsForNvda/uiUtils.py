@@ -85,3 +85,19 @@ def bind_read_only_text_focus_announcement(
 ) -> None:
     # Kept for existing call sites; focus now uses the normal read-only edit behavior.
     resize_read_only_text_for_content(control, minLines=minLines, maxLines=maxLines, width=width)
+
+
+def format_size_mb(size: int) -> str:
+    """Format bytes as megabytes with 1 decimal place."""
+    if size <= 0:
+        return ""
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
+def format_size_auto(size: int) -> str:
+    """Format bytes automatically choosing MB, KB, or bytes."""
+    if size >= 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f} MB"
+    if size >= 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size} bytes"

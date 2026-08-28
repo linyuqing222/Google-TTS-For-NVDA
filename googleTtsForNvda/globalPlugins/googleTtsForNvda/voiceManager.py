@@ -19,8 +19,10 @@ import wx
 from gui import nvdaControls
 from logHandler import log
 from synthDrivers.googleTtsForNvda import bridge as browserBridge
-from synthDrivers.googleTtsForNvda import standby, voice_store
+from synthDrivers.googleTtsForNvda import language_utils, standby, voice_store
 from synthDrivers.googleTtsForNvda.catalog import VoiceCatalog, VoicePackage, is_package_supported_by_engine
+
+from .uiUtils import format_size_mb
 
 addonHandler.initTranslation()
 
@@ -115,59 +117,11 @@ LANGUAGE_NAMES: dict[str, str] = {
 
 
 def get_nvda_locale_for_language(lang_code: str | None) -> str:
-    if not lang_code:
-        return ""
-    languageText = str(lang_code).strip()
-    languageMap = {
-        "cmn-CN": "zh_CN",
-        "cmn-TW": "zh_TW",
-        "yue-HK": "zh_HK",
-        "ar-XA": "ar",
-        "fil-PH": "tl",
-    }
-    if languageText in languageMap:
-        return languageMap[languageText]
-    lowerLanguage = languageText.lower()
-    if lowerLanguage.startswith("cmn"):
-        return "zh_CN"
-    if lowerLanguage.startswith("yue"):
-        return "zh_HK"
-    try:
-        normalized = languageHandler.normalizeLanguage(languageText)
-    except Exception:
-        normalized = languageText.replace("-", "_")
-    return str(normalized or "").strip()
-
-
-def _language_display_candidates(lang_code: str) -> list[str]:
-    nvdaLocale = get_nvda_locale_for_language(lang_code)
-    candidates: list[str] = []
-    for candidate in (nvdaLocale, nvdaLocale.split("_", 1)[0] if "_" in nvdaLocale else "", lang_code):
-        if candidate and candidate not in candidates:
-            candidates.append(candidate)
-    return candidates
-
-
-def _google_language_display_name(lang_code: str) -> str:
-    normalized = str(lang_code or "").strip().replace("_", "-").lower()
-    for code, name in LANGUAGE_NAMES.items():
-        if code.lower() == normalized:
-            return name
-    return ""
+    return language_utils.get_nvda_locale_for_language(lang_code)
 
 
 def get_language_display_name(lang_code: str) -> str:
-    googleName = _google_language_display_name(lang_code)
-    if googleName:
-        return googleName
-    for candidate in _language_display_candidates(lang_code):
-        try:
-            description = languageHandler.getLanguageDescription(candidate)
-        except Exception:
-            description = None
-        if description:
-            return description
-    return lang_code
+    return language_utils.get_language_display_name(lang_code, custom_language_names=LANGUAGE_NAMES)
 
 
 def _current_ui_language() -> str:
@@ -683,9 +637,7 @@ class VoiceManagerDialog(nvdaControls.DPIScaledDialog):
         return ", ".join(name for name in names if name)
 
     def _format_size(self, size: int) -> str:
-        if size <= 0:
-            return ""
-        return _("{size:.1f} MB").format(size=size / 1024 / 1024)
+        return format_size_mb(size)
 
     def _checked_packages(self, listCtrl: wx.ListCtrl, packages: list[VoicePackage]) -> list[VoicePackage]:
         if hasattr(listCtrl, "IsItemChecked"):

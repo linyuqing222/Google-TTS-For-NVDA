@@ -148,6 +148,9 @@ NO_SPACE_SCRIPT_PROFILES = (
     (((0xAA00, 0xAA5F),), 70),
     (((0xAA80, 0xAADF),), 70),
 )
+_FLATTENED_NO_SPACE_RANGES: tuple[tuple[int, int, int], ...] = tuple(
+    (start, end, limit) for ranges, limit in NO_SPACE_SCRIPT_PROFILES for start, end in ranges
+)
 
 COMMON_ABBREVIATIONS = {
     # English
@@ -634,11 +637,13 @@ def _is_sentence_trailing_closer(character: str) -> bool:
 
 
 def _is_no_space_script_character(character: str) -> bool:
+    if character.isascii():
+        return False
     codepoint = ord(character)
     category = unicodedata.category(character)
     if not (category.startswith("L") or category.startswith("M")):
         return False
-    return any(start <= codepoint <= end for ranges, _limit in NO_SPACE_SCRIPT_PROFILES for start, end in ranges)
+    return any(start <= codepoint <= end for start, end, _limit in _FLATTENED_NO_SPACE_RANGES)
 
 
 class TextSegmenter:
@@ -965,7 +970,7 @@ class TextSegmenter:
 
     def _no_space_script_segment_limit(self, text: str, maxLength: int) -> int | None:
         sample = text[: min(len(text), maxLength)]
-        if not sample:
+        if not sample or sample.isascii():
             return None
         signalCharacters = 0
         noSpaceCharacters = 0
@@ -975,8 +980,8 @@ class TextSegmenter:
             if category.startswith("L") or category.startswith("M"):
                 signalCharacters += 1
                 codepoint = ord(character)
-                for ranges, limit in NO_SPACE_SCRIPT_PROFILES:
-                    if any(start <= codepoint <= end for start, end in ranges):
+                for start, end, limit in _FLATTENED_NO_SPACE_RANGES:
+                    if start <= codepoint <= end:
                         noSpaceCharacters += 1
                         segmentLimit = limit if segmentLimit is None else min(segmentLimit, limit)
                         break

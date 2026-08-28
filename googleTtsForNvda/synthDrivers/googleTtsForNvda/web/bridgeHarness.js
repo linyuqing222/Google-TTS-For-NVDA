@@ -15,7 +15,9 @@
 	const firstAudioPacketSamples = 120;
 	const earlyAudioPacketSamples = 1200;
 	const steadyAudioPacketSamples = 2400;
+	const longStreamAudioPacketSamples = 3600;
 	const earlyAudioPacketCount = 3;
+	const steadyAudioPacketCount = 8;
 	const softLimiterKnee = 0.82;
 	const softLimiterCeiling = 0.94;
 	const synthesisIdlePollMs = 2;
@@ -471,7 +473,10 @@
 		if (emittedAudioPackets < earlyAudioPacketCount) {
 			return earlyAudioPacketSamples;
 		}
-		return steadyAudioPacketSamples;
+		if (emittedAudioPackets < steadyAudioPacketCount) {
+			return steadyAudioPacketSamples;
+		}
+		return longStreamAudioPacketSamples;
 	}
 
 	function queueAudioPacket(samples, sessionToken = currentSessionToken) {

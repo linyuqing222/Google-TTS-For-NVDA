@@ -328,6 +328,34 @@ class TextSegmenterTests(unittest.TestCase):
         categories = {case["category"] for case in self.corpus["cases"]}
         self.assertTrue(categories >= REQUIRED_CATEGORIES)
 
+    def test_no_space_script_segment_limit_ascii_fast_path(self) -> None:
+        """Verify ASCII strings return None immediately via fast path, while CJK/Thai return correct limits."""
+        # Pure ASCII text returns None without scanning
+        self.assertIsNone(self.segmenter._no_space_script_segment_limit("Hello world pure ascii text", 100))
+        self.assertIsNone(self.segmenter._no_space_script_segment_limit("1234567890 !@#$%^&*()_+", 100))
+        self.assertIsNone(self.segmenter._no_space_script_segment_limit("https://example.com/path?q=1", 100))
+
+        # CJK text returns 80 chars limit
+        cjk_text = "这是用于测试没有空格的长文本分段" * 5
+        self.assertEqual(80, self.segmenter._no_space_script_segment_limit(cjk_text, 240))
+
+        # Thai text returns 70 chars limit
+        thai_text = "ข้อความภาษาไทยสำหรับทดสอบการแบ่งข้อความยาว" * 3
+        self.assertEqual(70, self.segmenter._no_space_script_segment_limit(thai_text, 240))
+
+    def test_is_no_space_script_character_ascii_fast_path(self) -> None:
+        """Verify _is_no_space_script_character fast path for ASCII and accurate recognition for scripts."""
+        is_no_space = self.processing._is_no_space_script_character
+        # ASCII characters return False immediately
+        for ch in ("a", "Z", "0", "9", " ", ".", "-", "\n"):
+            self.assertFalse(is_no_space(ch))
+
+        # CJK / Thai / Khmer characters return True
+        self.assertTrue(is_no_space("中"))
+        self.assertTrue(is_no_space("文"))
+        self.assertTrue(is_no_space("ก"))
+        self.assertTrue(is_no_space("ข"))
+
 
 class ShortAudioCacheKeyTests(unittest.TestCase):
     @classmethod

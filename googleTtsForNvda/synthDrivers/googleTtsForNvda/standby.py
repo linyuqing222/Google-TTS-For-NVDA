@@ -10,6 +10,9 @@ import globalVars
 from logHandler import log
 
 from . import language_detector, voice_store
+from .audio_math import (
+    build_speech_options,
+)
 from .bridge import (
     CONFIG_AUTO_LANGUAGE_CANDIDATES,
     CONFIG_AUTO_LANGUAGE_DETECTION,
@@ -32,10 +35,6 @@ from .watcher import DirectoryChangeWatcher
 SYNTH_NAME = "googleTtsForNvda"
 ADDON_DIR = Path(__file__).resolve().parents[2]
 _VOICE_WARMUP_TEXT = " "
-_OUTPUT_GAIN_MAKEUP = 1.70
-_PROTECTED_ENGINE_RATE = 1.18
-_MIN_ARTIFICIAL_RATE = 0.5
-_MAX_ARTIFICIAL_RATE = 2.2
 
 
 def _config_bool(value: Any, default: bool = False) -> bool:
@@ -435,23 +434,6 @@ def _warmup_voice_ids(catalog: VoiceCatalog, state: dict[str, Any]) -> list[str]
     return voiceIds or [currentVoice]
 
 
-def _rate_to_chrome(value: int, rateBoost: bool) -> float:
-    percent = max(0, min(100, value)) / 100.0
-    rate = 0.35 + (2.0 - 0.35) * percent
-    if rateBoost:
-        rate *= 2
-    return round(max(0.1, min(10.0, rate)), 3)
-
-
-def _pitch_to_chrome(pitch: int) -> float:
-    pitchSemitones = -12.0 + 24.0 * max(0, min(100, pitch)) / 100.0
-    return round(max(0.1, min(3.0, 1.0 + pitchSemitones / 20.0)), 3)
-
-
-def _uses_protected_engine_rate(packageId: str) -> bool:
-    return packageId.lower().endswith("-seanet")
-
-
 def _speech_options(
     catalog: VoiceCatalog,
     rate: int,
@@ -462,31 +444,19 @@ def _speech_options(
 ) -> dict[str, Any]:
     speaker = catalog.speaker_for_voice(voice)
     package = catalog.package_for_voice(speaker.id)
-    volumeLevel = max(0.0, min(1.0, volume / 100.0))
-    outputGain = max(0.0, min(_OUTPUT_GAIN_MAKEUP, volumeLevel * _OUTPUT_GAIN_MAKEUP))
-    desiredRate = _rate_to_chrome(rate, rateBoost)
-    engineRate = desiredRate
-    artificialRate = 1.0
-    usesProtectedEngineRate = _uses_protected_engine_rate(package.id)
-    pitchValue = _pitch_to_chrome(pitch)
-    enginePitch = 1.0 if usesProtectedEngineRate else pitchValue
-    postPitch = pitchValue if usesProtectedEngineRate else 1.0
-    if usesProtectedEngineRate and desiredRate > _PROTECTED_ENGINE_RATE:
-        engineRate = _PROTECTED_ENGINE_RATE
-        artificialRate = max(_MIN_ARTIFICIAL_RATE, min(_MAX_ARTIFICIAL_RATE, desiredRate / engineRate))
-    return {
-        "voiceId": speaker.id,
-        "voiceName": speaker.name,
-        "lang": speaker.language,
-        "rate": round(engineRate, 3),
-        "artificialRate": round(artificialRate, 3),
-        "pitch": round(enginePitch, 3),
-        "postPitch": round(postPitch, 3),
-        "volume": round(volumeLevel, 4),
-        "outputGain": round(outputGain, 4),
-        "nvdaRate": max(0, min(100, int(rate))),
-        "rateBoost": bool(rateBoost),
-    }
+    options = build_speech_options(
+        speaker_id=speaker.id,
+        speaker_name=speaker.name,
+        lang=speaker.language,
+        package_id=package.id,
+        rate=rate,
+        pitch=pitch,
+        volume=volume,
+        rateBoost=rateBoost,
+    )
+    options["nvdaRate"] = max(0, min(100, int(rate)))
+    options["rateBoost"] = bool(rateBoost)
+    return options
 
 
 def _warmup_options(catalog: VoiceCatalog) -> list[dict[str, Any]]:

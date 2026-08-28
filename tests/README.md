@@ -25,8 +25,9 @@ process-manager tests (`FakeCdpClient`, `FakeEngine`, `FakeProcessManager`,
 Covers the core speech-processing module: three pause modes, inclusive PCM noise
 floor, arbitrary PCM packet boundaries, hidden-segment finalization, bounded
 lead buffering, whole/segment cache identity, safe boundary-context reuse, text
-segmentation, corpus schema validation, medium-text fast-first fallback,
-single-letter abbreviation guards (the `isascii()` guard prevents non-Latin
+segmentation, ASCII and no-space script fast-path optimizations (`sample.isascii()`
+and `_FLATTENED_NO_SPACE_RANGES`), corpus schema validation, medium-text fast-first
+fallback, single-letter abbreviation guards (the `isascii()` guard prevents non-Latin
 single-letter words from blocking splits), and Unicode sentence terminal
 coverage across ASCII, CJK, Arabic, Devanagari, Thai, Meetei Mayek, Greek, and
 the tailored ellipsis.
@@ -167,13 +168,16 @@ python generate_unicode_data.py --ucd-dir <ucd-directory> `
 Tests for pure helper functions extracted from the SynthDriver `__init__.py`
 without triggering NVDA imports: rate factor interpolation (`_interpolate_rate_factor`),
 break rate clamping (`_break_rate_factor`), end-of-utterance rate factor,
-language word regex, and Vietnamese/English word dictionaries.
+language word regex, Vietnamese/English word dictionaries, and backward-compatible
+configuration migration (`ConfigCompatTests` covering safe default population for
+legacy settings like `rateBoost` and `pauseMode`, preservation of custom settings,
+and NVDA `loadSettings()` loop simulation).
 
 ### `test_performance.py`
 
 Covers performance characteristics and optimization verification for the
-workspace version. Constants from `__init__.py` are read via regex source
-parsing (not imported) to avoid NVDA dependency issues.
+workspace version. Constants from `__init__.py` and `bridgeHarness.js` are read
+via regex source parsing (not imported) to avoid NVDA dependency issues.
 
 - **Segment flush threshold** (`SegmentFlushThresholdTests`): verifies that
   `_FLUSH_GROUP_CHARS_THRESHOLD` (120 chars) controls when soft phrase boundaries
@@ -187,6 +191,10 @@ parsing (not imported) to avoid NVDA dependency issues.
 - **Pause mode constants** (`PauseModePerformanceTests`): verifies optimized
   timing constants: sentence break 45ms (from 95ms), end-of-utterance pause 40ms
   (from 80ms), and preload resume delay 0.15s (from 0.45s).
+- **Adaptive audio packet sizing** (`AdaptiveAudioPacketSizingTests`): verifies
+  laddered audio packet constants in `bridgeHarness.js` (first 120 samples / 5ms,
+  early 1200 samples / 50ms, steady 2400 samples / 100ms, long-stream 3600 samples /
+  150ms) to ensure instant startup latency and reduced CDP/base64 serialization.
 
 Cache key tests and segmentation benchmarks live in their dedicated modules
 (`test_speech_processing.py` and `test_segmentation_benchmarks.py` respectively).
@@ -197,9 +205,25 @@ Performance benchmark tests for text segmentation and audio processing.
 
 - **Multilingual segmentation** (`SegmentationPerformanceTests`): verifies
   sentence splits and latency segments for Latin, CJK, Thai, Arabic, Hindi,
-  mixed-script, emoji-heavy, and URL-heavy text within time bounds.
+  mixed-script, emoji-heavy, and URL-heavy text within time bounds. Runs
+  isolated cache warm-up passes before timing to eliminate cold-start measurement
+  noise and verifies linear scaling robustness on CI runners.
 - **PCM throughput** (`PcmProcessingThroughputTests`): verifies PCM silence
   shortener processes audio faster than real-time.
+
+### `test_audio_math.py`
+
+Tests for pure audio mathematics and speech option calculation helpers in `audio_math.py`:
+rate-to-Chrome multiplier curve, pitch-to-Chrome semitone calculation, SeaNet protected
+rate detection, and speech option building for both standard and SeaNet models.
+
+### `test_language_utils.py`
+
+Tests for shared language and locale normalization helpers in `language_utils.py`:
+language tag normalization (`normalize_language`, `normalize_language_code`),
+special NVDA locale mapping (Chinese, Arabic, Tagalog), prefix lookups, fallback
+resolution, and custom language display name resolution.
+
 
 ## Data files
 
