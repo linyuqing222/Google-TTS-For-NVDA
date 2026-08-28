@@ -55,6 +55,8 @@ When writing documentation, release notes, commit messages, or user-facing summa
 - Add concise comments only where behavior is non-obvious, especially for browser-runtime/WASM quirks.
 - Keep user-facing strings translatable with `_('...')` where used in NVDA UI code.
 - Do not silently swallow exceptions that affect speech, downloads, or packaging. Log enough context for debugging.
+- Verify all package imports strictly match existing module exports. Because `__init__.py` suppresses `F401` for re-exports, ensure no non-existent or stale imports remain in `__init__.py` files to avoid fatal runtime `ImportError` during NVDA plugin/driver discovery.
+
 
 ### After editing
 
