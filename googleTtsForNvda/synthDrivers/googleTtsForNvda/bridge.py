@@ -1581,11 +1581,13 @@ class WasmTtsEngineBridge:
         self.catalog = catalog
         self._lastStopSentAt = 0.0
         self._stopLock = threading.Lock()
+        self._runtimeBusyLock = threading.Lock()
         self._runtimeBusy = False
 
     @property
     def runtime_busy(self) -> bool:
-        return self._runtimeBusy
+        with self._runtimeBusyLock:
+            return self._runtimeBusy
 
     def enable_cdp_domains(self, cancelEvent: threading.Event | None = None) -> None:
         self._cdp.request("Runtime.enable", timeout=15, cancelEvent=cancelEvent)
@@ -1788,7 +1790,8 @@ class WasmTtsEngineBridge:
                 fail_speech_event(detail)
 
         expression = f"window.googleTtsForNvdaSpeak({json.dumps(payload, ensure_ascii=False)})"
-        self._runtimeBusy = cancelEvent is not None
+        with self._runtimeBusyLock:
+            self._runtimeBusy = cancelEvent is not None
         try:
             response = self._cdp.request(
                 "Runtime.evaluate",
@@ -1807,7 +1810,8 @@ class WasmTtsEngineBridge:
         except CdpCancelled:
             raise
         finally:
-            self._runtimeBusy = False
+            with self._runtimeBusyLock:
+                self._runtimeBusy = False
         result = response.get("result", {}).get("result", {})
         if result.get("subtype") == "error":
             detail = str(result.get("description") or "Browser speech evaluation failed.")
@@ -2004,62 +2008,71 @@ class ChromeTtsBridge:
             return not self._needsRecycle and not self._engine.runtime_busy and self._cdp_client.is_connected()
 
     def ensure_connection(self, cancelEvent: threading.Event | None = None) -> None:
+        _raise_if_cancelled(cancelEvent)
         with self._lock:
-            _raise_if_cancelled(cancelEvent)
             if self._cdp_client.is_connected():
                 return
-            skipRuntimes: set[str] = set()
-            while True:
-                runtime: str | None = None
-                try:
-                    startedAt = time.perf_counter()
-                    wsUrl = self._process_manager.start_and_get_websocket_url(
-                        cancelEvent=cancelEvent,
-                        skipRuntimes=skipRuntimes,
-                    )
-                    websocketReadyAt = time.perf_counter()
-                    runtime = self._process_manager.profile_runtime
+        skipRuntimes: set[str] = set()
+        while True:
+            _raise_if_cancelled(cancelEvent)
+            runtime: str | None = None
+            try:
+                startedAt = time.perf_counter()
+                wsUrl = self._process_manager.start_and_get_websocket_url(
+                    cancelEvent=cancelEvent,
+                    skipRuntimes=skipRuntimes,
+                )
+                websocketReadyAt = time.perf_counter()
+                runtime = self._process_manager.profile_runtime
+                with self._lock:
                     self._cdp_client.connect(wsUrl)
-                    cdpConnectedAt = time.perf_counter()
+                cdpConnectedAt = time.perf_counter()
+                with self._lock:
                     self._engine.enable_cdp_domains(cancelEvent=cancelEvent)
-                    cdpDomainsEnabledAt = time.perf_counter()
+                cdpDomainsEnabledAt = time.perf_counter()
+                with self._lock:
                     self._engine.wait_until_ready(cancelEvent=cancelEvent)
-                    harnessReadyAt = time.perf_counter()
+                harnessReadyAt = time.perf_counter()
+                with self._lock:
                     self._runtimeReadyAt = time.monotonic()
                     self._lastMemoryCheckAt = self._runtimeReadyAt
                     self._highMemorySampleCount = 0
-                    log.debug(
-                        "Google TTS %s browser startup timings: browser target %.1f ms, CDP connect %.1f ms, CDP domains %.1f ms, harness ready %.1f ms, total %.1f ms.",
-                        runtime or "unknown",
-                        (websocketReadyAt - startedAt) * 1000,
-                        (cdpConnectedAt - websocketReadyAt) * 1000,
-                        (cdpDomainsEnabledAt - cdpConnectedAt) * 1000,
-                        (harnessReadyAt - cdpDomainsEnabledAt) * 1000,
-                        (harnessReadyAt - startedAt) * 1000,
-                    )
-                    return
-                except CdpCancelled:
+                log.debug(
+                    "Google TTS %s browser startup timings: browser target %.1f ms, CDP connect %.1f ms, CDP domains %.1f ms, harness ready %.1f ms, total %.1f ms.",
+                    runtime or "unknown",
+                    (websocketReadyAt - startedAt) * 1000,
+                    (cdpConnectedAt - websocketReadyAt) * 1000,
+                    (cdpDomainsEnabledAt - cdpConnectedAt) * 1000,
+                    (harnessReadyAt - cdpDomainsEnabledAt) * 1000,
+                    (harnessReadyAt - startedAt) * 1000,
+                )
+                return
+            except CdpCancelled:
+                with self._lock:
                     self._cdp_client.close()
                     self._process_manager.terminate()
-                    raise
-                except Exception as exc:
+                raise
+            except Exception as exc:
+                with self._lock:
                     self._cdp_client.close()
                     runtime = runtime or self._process_manager.profile_runtime
                     self._process_manager.terminate()
-                    if runtime:
-                        runtime = _normalize_browser_runtime(runtime)
-                        skipRuntimes.add(runtime)
-                        if _browser_choices(skipRuntimes=skipRuntimes):
-                            self._process_manager._log_browser_runtime_failure(runtime, exc, True)
-                            continue
-                    raise
+                if runtime:
+                    runtime = _normalize_browser_runtime(runtime)
+                    skipRuntimes.add(runtime)
+                    if _browser_choices(skipRuntimes=skipRuntimes):
+                        self._process_manager._log_browser_runtime_failure(runtime, exc, True)
+                        continue
+                raise
 
     def preload_voice(self, options: dict[str, Any], cancelEvent: threading.Event | None = None) -> dict[str, Any]:
         try:
             _raise_if_cancelled(cancelEvent)
             self.maybe_recycle_runtime(allowIdleRecycle=False, checkMemory=False)
             self.ensure_connection(cancelEvent=cancelEvent)
-            return self._engine.preload_voice(options, cancelEvent=cancelEvent)
+            with self._lock:
+                engine = self._engine
+            return engine.preload_voice(options, cancelEvent=cancelEvent)
         except CdpCancelled:
             raise
         except Exception as exc:
@@ -2083,7 +2096,9 @@ class ChromeTtsBridge:
                 _raise_if_cancelled(cancelEvent)
                 self.maybe_recycle_runtime(allowIdleRecycle=False, checkMemory=False)
                 self.ensure_connection(cancelEvent=cancelEvent)
-                return self._engine.speak(
+                with self._lock:
+                    engine = self._engine
+                return engine.speak(
                     text,
                     options,
                     onAudio,
@@ -2115,12 +2130,16 @@ class ChromeTtsBridge:
     def stop_runtime(self) -> None:
         try:
             self.ensure_connection()
-            self._engine.stop_runtime()
+            with self._lock:
+                engine = self._engine
+            engine.stop_runtime()
         except Exception:
             log.debug("Could not stop Google TTS Chromium browser runtime.", exc_info=True)
 
     def cancel_current(self) -> None:
-        self._engine.cancel_current()
+        with self._lock:
+            engine = self._engine
+        engine.cancel_current()
 
     def terminate(self) -> None:
         with self._lock:
@@ -2142,20 +2161,26 @@ class ChromeTtsBridge:
         eventHandler: Callable[[dict[str, Any]], None] | None = None,
         cancelEvent: threading.Event | None = None,
     ) -> dict[str, Any]:
+        with self._lock:
+            engine = self._engine
         return self._cdp_client.request(
             method,
             params,
             timeout=timeout,
             eventHandler=eventHandler,
             cancelEvent=cancelEvent,
-            onCancelCallback=self._engine.send_fast_stop,
+            onCancelCallback=engine.send_fast_stop,
         )
 
     def _send_stop(self) -> None:
-        self._engine.send_fast_stop()
+        with self._lock:
+            engine = self._engine
+        engine.send_fast_stop()
 
     def _wait_until_ready(self, cancelEvent: threading.Event | None = None) -> None:
-        self._engine.wait_until_ready(cancelEvent=cancelEvent)
+        with self._lock:
+            engine = self._engine
+        engine.wait_until_ready(cancelEvent=cancelEvent)
 
     def _close_websocket(self) -> None:
         self._cdp_client.close()

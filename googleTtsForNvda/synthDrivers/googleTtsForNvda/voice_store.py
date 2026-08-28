@@ -235,23 +235,70 @@ def physically_installed_packages(catalog: VoiceCatalog) -> list[VoicePackage]:
     filesByName = _voice_files_by_name()
     installed: list[VoicePackage] = []
     verificationCacheUpdated = False
+    # Load persistent cache once for the entire batch to avoid redundant I/O.
+    with _verificationCacheLock:
+        persistentCache = _load_persistent_verification_cache()
     for package in catalog.packages:
         fileInfo = filesByName.get(package.fileName)
         if fileInfo is None:
-            verificationCacheUpdated = (
-                _forget_verified_package(package.id, savePersistent=False) or verificationCacheUpdated
-            )
+            with _verificationCacheLock:
+                _verifiedPackageCache.pop(package.id, None)
+                if package.id in persistentCache:
+                    persistentCache.pop(package.id, None)
+                    verificationCacheUpdated = True
             continue
         path, stat = fileInfo
-        packageInstalled, cacheUpdated = _check_package_file_installed(
-            package,
-            path,
-            stat,
-            savePersistent=False,
-        )
-        if packageInstalled:
+        cacheKey = (stat.st_size, stat.st_mtime_ns)
+        if package.compressedSize and stat.st_size != package.compressedSize:
+            with _verificationCacheLock:
+                _verifiedPackageCache.pop(package.id, None)
+                if package.id in persistentCache:
+                    persistentCache.pop(package.id, None)
+                    verificationCacheUpdated = True
+            continue
+        with _verificationCacheLock:
+            if _verifiedPackageCache.get(package.id) == cacheKey:
+                installed.append(package)
+                continue
+        # Check persistent cache without re-reading from disk.
+        persistentMatch = False
+        if package.sha256Checksum and package.id in persistentCache:
+            entry = persistentCache[package.id]
+            if isinstance(entry, dict):
+                expectedHash = package.sha256Checksum.lower()
+                persistentMatch = (
+                    entry.get("fileName") == package.fileName
+                    and entry.get("size") == stat.st_size
+                    and entry.get("mtimeNs") == stat.st_mtime_ns
+                    and str(entry.get("expectedSha256") or "").lower() == expectedHash
+                    and str(entry.get("verifiedSha256") or "").lower() == expectedHash
+                )
+        if persistentMatch:
+            with _verificationCacheLock:
+                _verifiedPackageCache[package.id] = cacheKey
             installed.append(package)
-        verificationCacheUpdated = verificationCacheUpdated or cacheUpdated
+            continue
+        # Last resort: compute SHA256.
+        actualHash = sha256(path).lower() if package.sha256Checksum else None
+        if actualHash is not None and actualHash != package.sha256Checksum.lower():
+            with _verificationCacheLock:
+                _verifiedPackageCache.pop(package.id, None)
+                if package.id in persistentCache:
+                    persistentCache.pop(package.id, None)
+                    verificationCacheUpdated = True
+            continue
+        installed.append(package)
+        with _verificationCacheLock:
+            _verifiedPackageCache[package.id] = cacheKey
+        if package.sha256Checksum and actualHash is not None:
+            persistentCache[package.id] = {
+                "fileName": package.fileName,
+                "size": stat.st_size,
+                "mtimeNs": stat.st_mtime_ns,
+                "expectedSha256": package.sha256Checksum.lower(),
+                "verifiedSha256": actualHash.lower(),
+            }
+            verificationCacheUpdated = True
     if verificationCacheUpdated:
         _save_persistent_verification_cache()
     return installed

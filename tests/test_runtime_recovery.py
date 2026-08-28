@@ -1,19 +1,10 @@
 from __future__ import annotations
 
-import threading
 import unittest
 
-from tests.test_support import load_driver_module
+from tests.test_support import FakeEngine, load_driver_module, make_fake_bridge
 
 bridgeModule = load_driver_module("bridge")
-
-
-class _FakeCdpClient:
-    def __init__(self, connected: bool = True) -> None:
-        self.connected = connected
-
-    def is_connected(self) -> bool:
-        return self.connected
 
 
 class _FailingEngine:
@@ -27,16 +18,6 @@ class _FailingEngine:
         raise self.error
 
 
-class _SuccessfulEngine:
-    def __init__(self) -> None:
-        self.calls = 0
-        self.runtime_busy = False
-
-    def speak(self, *args: object, **kwargs: object) -> dict[str, object]:
-        self.calls += 1
-        return {"success": True}
-
-
 def _browser_speech_error(*, audioStarted: bool) -> BaseException:
     return bridgeModule._BrowserSpeechError(
         "Could not speak",
@@ -46,15 +27,9 @@ def _browser_speech_error(*, audioStarted: bool) -> BaseException:
 
 
 def _runtime_bridge(engine: object) -> object:
-    bridge = bridgeModule.ChromeTtsBridge.__new__(bridgeModule.ChromeTtsBridge)
-    bridge._lock = threading.RLock()
-    bridge._engine = engine
-    bridge._cdp_client = _FakeCdpClient()
-    bridge._needsRecycle = False
-    bridge._recycleUrgent = False
-    bridge._recycleReason = ""
-    bridge.ensure_connection = lambda cancelEvent=None: None
-    return bridge
+    b = make_fake_bridge(engine=engine)
+    b.ensure_connection = lambda cancelEvent=None: None
+    return b
 
 
 class RuntimeRecoveryTests(unittest.TestCase):
@@ -64,7 +39,7 @@ class RuntimeRecoveryTests(unittest.TestCase):
 
     def test_no_audio_browser_error_retries_once_after_recycle(self) -> None:
         failedEngine = _FailingEngine(_browser_speech_error(audioStarted=False))
-        successfulEngine = _SuccessfulEngine()
+        successfulEngine = FakeEngine()
         bridge = _runtime_bridge(failedEngine)
         recycleCalls = 0
 
@@ -88,7 +63,7 @@ class RuntimeRecoveryTests(unittest.TestCase):
     def test_partial_audio_browser_error_recycles_without_retry(self) -> None:
         error = _browser_speech_error(audioStarted=True)
         failedEngine = _FailingEngine(error)
-        successfulEngine = _SuccessfulEngine()
+        successfulEngine = FakeEngine()
         bridge = _runtime_bridge(failedEngine)
         recycleCalls = 0
 
@@ -130,7 +105,8 @@ class RuntimeRecoveryTests(unittest.TestCase):
         self.assertEqual(2, recycleCalls)
 
     def test_only_healthy_connected_runtime_is_safe_for_standby(self) -> None:
-        bridge = _runtime_bridge(_SuccessfulEngine())
+        bridge = _runtime_bridge(FakeEngine())
+        bridge._cdp_client.connected = True
         self.assertTrue(bridge.safe_for_standby_release())
 
         bridge._needsRecycle = True

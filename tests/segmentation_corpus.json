@@ -547,6 +547,97 @@
         "maxSegmentLength": 240,
         "preservesNonWhitespace": true
       }
+    },
+    {
+      "id": "en-us-nested-abbreviation-usa",
+      "category": "abbreviation",
+      "locale": "en-US",
+      "operation": "sentenceUnits",
+      "text": "She visited the U.S.A. last year. Now she is back.",
+      "expected": [
+        "She visited the U.S.A. last year.",
+        "Now she is back."
+      ]
+    },
+    {
+      "id": "en-us-mixed-abbreviation-and-sentence",
+      "category": "abbreviation",
+      "locale": "en-US",
+      "operation": "sentenceUnits",
+      "text": "Prof. Dr. Rivera arrived. The meeting started.",
+      "expected": [
+        "Prof. Dr. Rivera arrived.",
+        "The meeting started."
+      ]
+    },
+    {
+      "id": "en-us-url-with-short-scheme",
+      "category": "url",
+      "locale": "en-US",
+      "operation": "sentenceUnits",
+      "text": "Open ftp://files.example.com/docs now. Then continue.",
+      "expected": [
+        "Open ftp://files.example.com/docs now.",
+        "Then continue."
+      ]
+    },
+    {
+      "id": "en-us-ellipsis-between-sentences",
+      "category": "locale-punctuation",
+      "locale": "en-US",
+      "operation": "sentenceUnits",
+      "text": "I was thinking... Then I decided to act.",
+      "expected": [
+        "I was thinking...",
+        "Then I decided to act."
+      ]
+    },
+    {
+      "id": "en-us-multiple-sentence-terminals",
+      "category": "locale-punctuation",
+      "locale": "en-US",
+      "operation": "sentenceUnits",
+      "text": "Wow!! Amazing? Yes.",
+      "expected": [
+        "Wow!!",
+        "Amazing?",
+        "Yes."
+      ]
+    },
+    {
+      "id": "zh-cn-no-space-with-punctuation",
+      "category": "cjk",
+      "locale": "zh-CN",
+      "operation": "latencySegments",
+      "fastFirstSegment": false,
+      "textBuilder": {
+        "pattern": "这是一段很长的中文文本，用于测试分段功能是否正常工作，包括标点符号处理",
+        "repeat": 16,
+        "separator": ""
+      },
+      "assert": {
+        "minSegmentCount": 4,
+        "maxSegmentLength": 80,
+        "preservesNonWhitespace": true,
+        "noLeadingCombiningMark": true
+      }
+    },
+    {
+      "id": "hi-in-devanagari-mixed-script-latency",
+      "category": "long-sentence",
+      "locale": "hi-IN",
+      "operation": "latencySegments",
+      "fastFirstSegment": false,
+      "textBuilder": {
+        "pattern": "यह एक बहुत लंबा वाक्य है जिसमें बहुत सारे शब्द हैं",
+        "repeat": 20,
+        "separator": " "
+      },
+      "assert": {
+        "minSegmentCount": 4,
+        "maxSegmentLength": 240,
+        "preservesNonWhitespace": true
+      }
     }
   ]
 }

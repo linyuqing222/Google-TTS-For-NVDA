@@ -13,8 +13,10 @@ python -m unittest discover -s tests -v
 ## Test support
 
 `test_support.py` provides repository paths, isolated loading of pure driver
-modules, and PCM packing helpers. Reuse it when adding standalone tests instead
-of modifying `sys.path` or copying loaders into individual test files.
+modules, PCM packing helpers, and shared fake helpers for bridge / engine /
+process-manager tests (`FakeCdpClient`, `FakeEngine`, `FakeProcessManager`,
+`make_fake_bridge`). Reuse it when adding standalone tests instead of modifying
+`sys.path` or copying loaders into individual test files.
 
 ## Test files
 
@@ -52,13 +54,83 @@ all-locale menu selection, all-locale and repeated-locale command options,
 removal of obsolete PO blocks, preservation of exact existing translations, and
 the requirement that newly merged source strings remain empty for translators.
 
+### `test_bridge_concurrency.py`
+
+Covers race-condition mitigations in `bridge.py`. Verifies that
+`ensure_connection()` releases the lock between fallback attempts so `terminate()`
+is not blocked, that `self._engine` is captured under the lock before use to
+prevent stale/engine-swapped references, and that `_runtimeBusy` is protected by
+its own lock. Uses shared `FakeCdpClient`, `FakeEngine`, `FakeProcessManager`,
+and `make_fake_bridge` from `test_support.py`.
+
 ### `test_runtime_recovery.py`
 
 Covers browser-reported speech failures: a request may be retried once with a
 fresh runtime only before any PCM is emitted, partial audio must never be
 repeated, a no-audio error never retries more than once after recycle, and only a
 healthy, connected runtime with a non-busy engine and no pending recycle flag is
-safe for standby release.
+safe for standby release. Uses shared `FakeCdpClient` and `FakeEngine` from
+`test_support.py`.
+
+### `test_updater_security.py`
+
+Security tests for the updater module: SHA256 hash validation, size validation,
+path traversal prevention in file names, HTTPS-only enforcement for download
+URLs, manifest parsing rejects invalid input, update size limits, version
+comparison, manifest value stripping, version part extraction, update
+availability logic, required/optional string validation, locale key
+normalization, release notes selection, and update file name construction.
+
+### `test_voice_package_lifecycle.py`
+
+Integration tests for the voice package lifecycle: catalog loading, package
+verification with SHA256, package removal, copy for import flow, and a
+complete install-verify-remove-verify lifecycle.
+
+### `test_bridge_helpers.py`
+
+Tests for pure helper functions in `bridge.py`: path traversal prevention
+(`_safe_join`), browser runtime normalization, fallback order computation,
+byte formatting, CDP error classification (transient vs. recycle-required),
+`_raise_if_cancelled`, `_friendly_cdp_error`, `browser_runtime_for_path`,
+browser runtime snapshot, WebView2 detection, effective runtime selection,
+browser executable availability, and browser choice filtering.
+
+### `test_build_i18n_helpers.py`
+
+Tests for pure helper functions in `build_i18n.py`: PO file parsing (simple,
+multiline, untranslated entries, msgctxt), string format placeholder
+extraction, PO string escaping/quoting, obsolete entry purging, manifest
+value reading, language code normalization, and message preview truncation.
+
+### `test_generate_unicode_data_helpers.py`
+
+Tests for pure helper functions in `generate_unicode_data.py`: UCD record
+parsing (single codepoints and ranges), script alias resolution, codepoint
+range merging (overlapping, adjacent, unsorted), format helpers for ranges
+and codepoints, and module rendering output.
+
+### `test_standby_concurrency.py`
+
+Tests for `_StandbyRuntimeManager` concurrency patterns: generation counter
+prevents stale workers, cancelEvent propagation between refresh cycles,
+`claim_bridge` returns bridge when signature matches, `release_synth_bridge`
+stores bridge for reuse, and terminate shuts down cleanly.
+
+### `test_segmentation_fuzz.py`
+
+Fuzz tests for speech text segmentation with random Unicode input. Tests that
+the segmenter never crashes, always produces non-overlapping segments that
+cover the full input, and respects maximum segment lengths for a wide range of
+random Unicode text including Latin, CJK, Thai, Arabic, Devanagari, emoji,
+fullwidth, and extended Latin scripts.
+
+### `test_watcher.py`
+
+Unit tests for `DirectoryChangeWatcher`. Verifies start/stop lifecycle,
+callback invocation with correct reason, edge cases (no valid paths, empty
+callback), and handle cleanup. Integration tests using real Win32 kernel32
+and temp directories are skipped on non-Windows platforms.
 
 ### `test_language_redirect.py`
 
@@ -90,6 +162,13 @@ python generate_unicode_data.py --ucd-dir <ucd-directory> `
   --likely-subtags <cldr-likelySubtags.xml> --cldr-version 48.2
 ```
 
+### `test_synth_driver_helpers.py`
+
+Tests for pure helper functions extracted from the SynthDriver `__init__.py`
+without triggering NVDA imports: rate factor interpolation (`_interpolate_rate_factor`),
+break rate clamping (`_break_rate_factor`), end-of-utterance rate factor,
+language word regex, and Vietnamese/English word dictionaries.
+
 ### `test_performance.py`
 
 Covers performance characteristics and optimization verification for the
@@ -108,13 +187,28 @@ parsing (not imported) to avoid NVDA dependency issues.
 - **Pause mode constants** (`PauseModePerformanceTests`): verifies optimized
   timing constants: sentence break 45ms (from 95ms), end-of-utterance pause 40ms
   (from 80ms), and preload resume delay 0.15s (from 0.45s).
-- **Cache efficiency** (`CacheEfficiencyTests`): verifies cache keys differ by
-  pause mode, hidden segments, boundary context, and oversized inputs are
-  rejected.
-- **Segmentation benchmarks** (`BenchmarkSegmentationLatency`): verifies
-  short-text segmentation under 1ms, long-text (~2500 chars) under 25ms,
-  sentence splitting under 1ms, and PCM silence shortening faster than
-  real-time.
+
+Cache key tests and segmentation benchmarks live in their dedicated modules
+(`test_speech_processing.py` and `test_segmentation_benchmarks.py` respectively).
+
+### `test_segmentation_benchmarks.py`
+
+Performance benchmark tests for text segmentation and audio processing.
+
+- **Multilingual segmentation** (`SegmentationPerformanceTests`): verifies
+  sentence splits and latency segments for Latin, CJK, Thai, Arabic, Hindi,
+  mixed-script, emoji-heavy, and URL-heavy text within time bounds.
+- **PCM throughput** (`PcmProcessingThroughputTests`): verifies PCM silence
+  shortener processes audio faster than real-time.
+
+## Data files
+
+### `segmentation_corpus.json`
+
+JSON corpus for `TextSegmenterTests`. Records locale punctuation,
+abbreviation, URL, emoji, CJK/Thai no-space text, and long-sentence cases.
+Schema version 1; required fields, unique IDs, categories, and operations are
+validated before behavioral cases run.
 
 ## NVDA compatibility and runtime testing
 

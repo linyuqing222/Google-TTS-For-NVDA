@@ -304,7 +304,7 @@ Performance optimization code map:
 - `googleTtsForNvda/synthDrivers/googleTtsForNvda/__init__.py` flush logic: `_iter_speech_chunks()` inner loop with threshold-based `accumulatedChars` check.
 - `googleTtsForNvda/synthDrivers/googleTtsForNvda/speech_processing.py` lead buffer: `LIVE_MULTI_SEGMENT_LEAD_MS`.
 - `googleTtsForNvda/synthDrivers/googleTtsForNvda/standby.py` early-exit: `_StandbyRuntimeManager._run_refresh()` warm-bridge skip.
-- `tests/test_performance.py` regression coverage: `SegmentFlushThresholdTests`, `SpeechCoalescingTests`, `PcmLeadBufferPerformanceTests`, `PauseModePerformanceTests`, `CacheEfficiencyTests`, and `BenchmarkSegmentationLatency`.
+- `tests/test_performance.py` regression coverage: `SegmentFlushThresholdTests`, `SpeechCoalescingTests`, `PcmLeadBufferPerformanceTests`, and `PauseModePerformanceTests`.
 
 When changing these optimizations, run `python -m unittest tests.test_performance -v` to verify the performance characteristics remain within the documented thresholds.
 - Standalone tests share repository paths, isolated pure-module loading, and PCM helpers through `tests/test_support.py`. Reuse it instead of duplicating `sys.path` or import manipulation. Keep corpus schema and unique-ID validation in `tests/test_speech_processing.py` when extending corpus operations or categories.
@@ -445,12 +445,24 @@ Automatic language profiles deliberately have their own profile system and must 
   - `googleTtsForNvda/synthDrivers/googleTtsForNvda/web/bridgeHarness.js` browser completion and async-error signaling: `handleTtsEngineEvent()`, `synthesisErrorMessage`, `googleTtsForNvdaSpeak()`, `waitForWasmEnd()`, `waitForSynthesisComplete()`, `finishSegmentAudio()`, `flushAudioProcessors()`, `flushAudioQueue()`, and the `segmentEnd` bridge event.
 
 - Standalone regression test code map:
-  - `tests/test_support.py` repository paths and isolated pure-module loading: `ROOT`, `DRIVER_DIR`, `DRIVER_PATH`, `PROCESSING_PATH`, `UNICODE_DATA_PATH`, `_test_driver_package()`, `load_driver_module()`, `pcm_bytes()`, and `pcm_samples()`.
+  - `tests/test_support.py` repository paths, isolated pure-module loading, PCM helpers, and shared fake helpers for bridge / engine / process-manager tests (`FakeCdpClient`, `FakeEngine`, `FakeProcessManager`, `make_fake_bridge`).
   - `tests/test_speech_processing.py` and `tests/segmentation_corpus.json`: `CORPUS_PATH`, `SUPPORTED_SCHEMA_VERSION`, `SUPPORTED_OPERATIONS`, `REQUIRED_CATEGORIES`, `_materialize_text()`, `_sentence_units()`, `PcmSilenceShortenerTests`, `PcmLeadBufferTests`, `TextSegmenterTests`, `ShortAudioCacheKeyTests`, `SingleLetterAbbreviationGuardTests`, and `UnicodeSentenceTerminatorTests`.
   - `tests/test_unicode_data.py`: `UnicodeDataTests`.
   - `tests/test_dependency_isolation.py`: `BundledDependencyIsolationTests`, `VENDORED_WEBSOCKET_ROOT`, `DRIVER_INTERNAL_MODULES`, `GLOBAL_PLUGIN_INTERNAL_MODULES`, and `NVDA_ONLY_MODULES`.
-  - `tests/test_runtime_recovery.py`: `RuntimeRecoveryTests`, `_FakeCdpClient`, `_FailingEngine`, `_SuccessfulEngine`, `_browser_speech_error()`, and `_runtime_bridge()`.
-  - `tests/test_performance.py`: `SegmentFlushThresholdTests`, `SpeechCoalescingTests`, `PcmLeadBufferPerformanceTests`, `PauseModePerformanceTests`, `CacheEfficiencyTests`, `BenchmarkSegmentationLatency`, and `_read_driver_constant()`.
+  - `tests/test_runtime_recovery.py`: `RuntimeRecoveryTests`, `_FailingEngine`, `_browser_speech_error()`, and `_runtime_bridge()`.
+  - `tests/test_performance.py`: `SegmentFlushThresholdTests`, `SpeechCoalescingTests`, `PcmLeadBufferPerformanceTests`, `PauseModePerformanceTests`, and `_read_driver_constant()`.
+  - `tests/test_bridge_concurrency.py`: `EnsureConnectionLockScopeTests`, `EngineCaptureUnderLockTests`, and `RuntimeBusyLockTests`.
+  - `tests/test_bridge_helpers.py`: `SafeJoinTests`, `NormalizeBrowserRuntimeTests`, `RuntimeFallbackOrderTests`, `FormatBytesTests`, `TransientErrorClassificationTests`, `RuntimeRecycleClassificationTests`, `RaiseIfCancelledTests`, `BrowserRuntimeForPathTests`, `FriendlyCdpErrorTests`, `BrowserRuntimeSnapshotTests`, `EdgeWebview2BlocksTests`, `EffectiveBrowserRuntimeTests`, `ConfiguredBrowserRuntimeTests`, `BrowserExecutableAvailableTests`, `BrowserAvailabilityTests`, and `BrowserChoicesTests`.
+  - `tests/test_build_i18n_helpers.py`: `ParsePoTests`, `FormatSetTests`, `NormalizeLanguageCodeTests`, `PoEscapeTests`, `PurgeObsoleteTests`, `ManifestValuesTests`, and `MessagePreviewTests`.
+  - `tests/test_generate_unicode_data_helpers.py`: `ParseUcdRecordsTests`, `MergeRangesTests`, `ScriptAliasesTests`, `FormatRangesTests`, `FormatCodepointsTests`, and `RenderModuleTests`.
+  - `tests/test_language_redirect.py`: `LanguageRedirectTests` and `LanguageMatchesTests`.
+  - `tests/test_segmentation_benchmarks.py`: `SegmentationPerformanceTests` and `PcmProcessingThroughputTests`.
+  - `tests/test_segmentation_fuzz.py`: `SegmentationFuzzTests` and `SentenceSplitFuzzTests`.
+  - `tests/test_standby_concurrency.py`: `GenerationCounterTests`, `CancelEventTests`, `ClaimBridgeTests`, `ReleaseSynthBridgeTests`, and `TerminateTests`.
+  - `tests/test_synth_driver_helpers.py`: `InterpolateRateFactorTests`, `BreakRateFactorTests`, `EndOfUtteranceRateFactorTests`, `LanguageWordRegexTests`, and `WordDictionaryTests`.
+  - `tests/test_watcher.py`: `DirectoryChangeWatcherLifecycleTests`, `DirectoryChangeWatcherCallbackTests`, `DirectoryChangeWatcherEdgeCaseTests`, and `DirectoryChangeWatcherIntegrationTests`.
+  - `tests/test_updater_security.py`: `Sha256ValidationTests`, `SizeValidationTests`, `PathTraversalTests`, `HttpsOnlyTests`, `ManifestParsingTests`, `UpdateSizeLimitTests`, `VersionComparisonTests`, `StripManifestValueTests`, `VersionPartsTests`, `UpdateAvailabilityTests`, `RequiredStringTests`, `OptionalStringTests`, `LocaleKeyTests`, `ReleaseNotesTests`, and `UpdateFileNameTests`.
+  - `tests/test_voice_package_lifecycle.py`: `CatalogLoadingTests`, `PackageVerificationTests`, `PackageRemovalTests`, `PackageCopyTests`, and `VoicePackageLifecycleTests`.
 
 ---
 

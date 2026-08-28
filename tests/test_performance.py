@@ -1,4 +1,4 @@
-"""Performance and benchmark tests for Google TTS For NVDA speech processing.
+"""Performance tests for Google TTS For NVDA speech processing.
 
 These tests verify that the workspace optimizations produce correct results
 while measuring key performance characteristics:
@@ -6,15 +6,16 @@ while measuring key performance characteristics:
 - Segment flush threshold behaviour (hidden segments for cache hits)
 - Speech request coalescing (cancelled requests skip CDP round-trips)
 - PCM lead buffer timing (faster streaming start)
-- Short audio cache efficiency (segment vs group cache keys)
 - Pause mode logic correctness under threshold boundaries
+
+Segmentation benchmarks and cache key tests live in their dedicated modules
+(test_segmentation_benchmarks.py and test_speech_processing.py respectively).
 """
 
 from __future__ import annotations
 
 import re
 import threading
-import time
 import unittest
 
 from tests.test_support import ROOT, load_driver_module
@@ -192,188 +193,6 @@ class PauseModePerformanceTests(unittest.TestCase):
         """Verify optimized preload resume delay."""
         # Reduced from 0.45s to 0.15s
         self.assertEqual(0.15, _read_driver_constant("_PRELOAD_RESUME_DELAY_SECONDS"))
-
-    def test_silence_shortening_reduces_pause_duration(self) -> None:
-        """PAUSE_MODE_SHORTEN_ALL should produce shorter silences than DO_NOT_SHORTEN."""
-        pcm = _pcm(*([0] * 100))
-
-        do_not_shorten = self.processing.create_pcm_silence_shortener(
-            self.processing.PAUSE_MODE_DO_NOT_SHORTEN,
-            1000,
-        )
-        self.assertIsNone(do_not_shorten)
-
-        shorten_all = self.processing.create_pcm_silence_shortener(
-            self.processing.PAUSE_MODE_SHORTEN_ALL,
-            1000,
-        )
-        self.assertIsNotNone(shorten_all)
-
-        result = shorten_all.feed(pcm)
-        result += shorten_all.finish()
-        self.assertLess(len(result), len(pcm))
-
-
-class CacheEfficiencyTests(unittest.TestCase):
-    """Verify cache key correctness for segment and group caching."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.processing = load_driver_module("speech_processing")
-        cls.options = {
-            "voiceId": "vi-vn-x-multi:gft",
-            "rate": 1.0,
-            "pitch": 0.0,
-            "postPitch": 1.0,
-            "volume": 1.0,
-            "outputGain": 1.70,
-            "artificialRate": 1.0,
-            "nvdaRate": 50,
-        }
-
-    def test_group_cache_key_differs_by_pause_mode(self) -> None:
-        """Different pause modes should produce different cache keys."""
-        key_0 = self.processing.short_audio_cache_key(
-            "test text",
-            self.options,
-            pauseShorteningMode=self.processing.PAUSE_MODE_DO_NOT_SHORTEN,
-        )
-        key_1 = self.processing.short_audio_cache_key(
-            "test text",
-            self.options,
-            pauseShorteningMode=self.processing.PAUSE_MODE_SHORTEN_END_ONLY,
-        )
-        key_2 = self.processing.short_audio_cache_key(
-            "test text",
-            self.options,
-            pauseShorteningMode=self.processing.PAUSE_MODE_SHORTEN_ALL,
-        )
-        self.assertIsNotNone(key_0)
-        self.assertIsNotNone(key_1)
-        self.assertIsNotNone(key_2)
-        self.assertEqual(3, len({key_0, key_1, key_2}))
-
-    def test_segment_cache_key_differs_by_boundary_context(self) -> None:
-        """Segment cache keys should differ based on surrounding segments."""
-        key_first = self.processing.segment_audio_cache_key(
-            "hello",
-            self.options,
-            self.processing.PAUSE_MODE_SHORTEN_ALL,
-            hasPreviousSegment=False,
-            hasNextSegment=True,
-        )
-        key_middle = self.processing.segment_audio_cache_key(
-            "hello",
-            self.options,
-            self.processing.PAUSE_MODE_SHORTEN_ALL,
-            hasPreviousSegment=True,
-            hasNextSegment=True,
-        )
-        key_last = self.processing.segment_audio_cache_key(
-            "hello",
-            self.options,
-            self.processing.PAUSE_MODE_SHORTEN_ALL,
-            hasPreviousSegment=True,
-            hasNextSegment=False,
-        )
-        self.assertIsNotNone(key_first)
-        self.assertIsNotNone(key_middle)
-        self.assertIsNotNone(key_last)
-        self.assertEqual(3, len({key_first, key_middle, key_last}))
-
-    def test_hidden_segments_affect_group_cache_key(self) -> None:
-        """Group cache keys should differ when hidden segments change."""
-        key_no_hidden = self.processing.short_audio_cache_key(
-            "hello world",
-            self.options,
-        )
-        key_with_hidden = self.processing.short_audio_cache_key(
-            "hello world",
-            self.options,
-            hiddenSegments=["hello ", "world"],
-        )
-        self.assertIsNotNone(key_no_hidden)
-        self.assertIsNotNone(key_with_hidden)
-        self.assertNotEqual(key_no_hidden, key_with_hidden)
-
-    def test_cache_rejects_oversized_input(self) -> None:
-        """Cache keys should be None for oversized text or segments."""
-        self.assertIsNone(self.processing.short_audio_cache_key("x" * 5001, self.options))
-        self.assertIsNone(self.processing.short_audio_cache_key("x", self.options, ["x"] * 25))
-
-    def test_cache_accepts_valid_input(self) -> None:
-        """Cache keys should be valid for normal-sized text."""
-        key = self.processing.short_audio_cache_key("hello", self.options)
-        self.assertIsNotNone(key)
-        self.assertIsInstance(key, tuple)
-
-
-class BenchmarkSegmentationLatency(unittest.TestCase):
-    """Benchmark text segmentation to verify it's fast enough for real-time use."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.processing = load_driver_module("speech_processing")
-        cls.segmenter = cls.processing.DEFAULT_TEXT_SEGMENTER
-
-    def test_short_text_segmentation_under_1ms(self) -> None:
-        """Segmenting a short text should complete in under 1ms."""
-        text = "Hello world, this is a test."
-        iterations = 1000
-
-        start = time.perf_counter()
-        for _ in range(iterations):
-            list(self.segmenter.iter_text_segments_for_latency(text, False))
-        elapsed = time.perf_counter() - start
-
-        avg_ms = (elapsed / iterations) * 1000
-        self.assertLess(avg_ms, 1.0, f"Average segmentation took {avg_ms:.3f}ms")
-
-    def test_long_text_segmentation_under_25ms(self) -> None:
-        """Segmenting a long text (~2500 chars) should complete in under 25ms."""
-        text = " ".join(["word"] * 500)  # ~2500 chars
-        iterations = 50
-
-        start = time.perf_counter()
-        for _ in range(iterations):
-            list(self.segmenter.iter_text_segments_for_latency(text, True))
-        elapsed = time.perf_counter() - start
-
-        avg_ms = (elapsed / iterations) * 1000
-        self.assertLess(avg_ms, 25.0, f"Average segmentation took {avg_ms:.3f}ms")
-
-    def test_sentence_split_under_1ms(self) -> None:
-        """Finding sentence splits should be fast."""
-        text = "First sentence. Second sentence! Third question?"
-        iterations = 1000
-
-        start = time.perf_counter()
-        for _ in range(iterations):
-            self.segmenter.find_sentence_splits(text)
-        elapsed = time.perf_counter() - start
-
-        avg_ms = (elapsed / iterations) * 1000
-        self.assertLess(avg_ms, 1.0, f"Average sentence split took {avg_ms:.3f}ms")
-
-    def test_pcm_silence_shortener_throughput(self) -> None:
-        """PCM silence shortener should process audio faster than real-time."""
-        processing = self.processing
-        sample_rate = 24000
-        pcm = _pcm(*([1000] * 100), *([0] * 200), *([800] * 100), *([0] * 200))
-        iterations = 100
-
-        start = time.perf_counter()
-        for _ in range(iterations):
-            s = processing.create_pcm_silence_shortener(
-                processing.PAUSE_MODE_SHORTEN_ALL,
-                sample_rate,
-            )
-            s.feed(pcm)
-            s.finish()
-        elapsed = time.perf_counter() - start
-
-        # 1 second of audio, 100 iterations - should be under 100ms
-        self.assertLess(elapsed, 0.1, f"PCM processing took {elapsed:.3f}s")
 
 
 if __name__ == "__main__":
