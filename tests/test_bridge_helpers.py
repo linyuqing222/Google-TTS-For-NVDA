@@ -38,19 +38,19 @@ class SafeJoinTests(unittest.TestCase):
 
     def test_normal_relative_path(self) -> None:
         result = bridge._safe_join(self._root, "subdir/file.txt")
-        self.assertEqual(self._root / "subdir" / "file.txt", result)
+        self.assertEqual((self._root / "subdir" / "file.txt").resolve(), result)
 
     def test_rejects_dotdot(self) -> None:
         result = bridge._safe_join(self._root, "../etc/passwd")
-        self.assertEqual(self._root / "__invalid__", result)
+        self.assertEqual((self._root / "__invalid__").resolve(), result)
 
     def test_rejects_absolute_path(self) -> None:
         result = bridge._safe_join(self._root, "/etc/passwd")
-        self.assertEqual(self._root / "__invalid__", result)
+        self.assertEqual((self._root / "__invalid__").resolve(), result)
 
     def test_rejects_encoded_dotdot(self) -> None:
         result = bridge._safe_join(self._root, "%2e%2e/etc/passwd")
-        self.assertEqual(self._root / "__invalid__", result)
+        self.assertEqual((self._root / "__invalid__").resolve(), result)
 
     def test_accepts_clean_relative_path(self) -> None:
         result = bridge._safe_join(self._root, "clean/path")

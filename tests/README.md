@@ -58,7 +58,7 @@ the requirement that newly merged source strings remain empty for translators.
 ### `test_bridge_concurrency.py`
 
 Covers race-condition mitigations in `bridge.py`. Verifies that
-`ensure_connection()` releases the lock between fallback attempts so `terminate()`
+`ensure_connection()` releases the lock between fallback attempts so `terminate()``
 is not blocked, that `self._engine` is captured under the lock before use to
 prevent stale/engine-swapped references, and that `_runtimeBusy` is protected by
 its own lock. Uses shared `FakeCdpClient`, `FakeEngine`, `FakeProcessManager`,
@@ -96,6 +96,12 @@ byte formatting, CDP error classification (transient vs. recycle-required),
 `_raise_if_cancelled`, `_friendly_cdp_error`, `browser_runtime_for_path`,
 browser runtime snapshot, WebView2 detection, effective runtime selection,
 browser executable availability, and browser choice filtering.
+
+**Cross-platform note:** `_safe_join` calls `Path.resolve()` internally, which
+on Windows may return 8.3 short names (e.g. `RUNNER~1` instead of
+`runneradmin`). All `SafeJoinTests` assertions therefore use `.resolve()` on
+both the expected and actual paths to ensure consistent comparison across
+platforms.
 
 ### `test_build_i18n_helpers.py`
 
