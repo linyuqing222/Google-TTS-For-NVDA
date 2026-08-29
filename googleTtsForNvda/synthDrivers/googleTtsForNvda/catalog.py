@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 BASE_DIR = Path(__file__).resolve().parent
-ENGINE_VERSION = "20260806.1"
+ENGINE_VERSION = "20260820.1"
 ENGINE_ROOT = BASE_DIR / "WasmTtsEngine"
 ENGINE_DIR = ENGINE_ROOT / ENGINE_VERSION
 CATALOG_PATH = ENGINE_DIR / "voices.json"

@@ -700,12 +700,21 @@
 	}
 
 	function isTtsEngineInstance(val) {
-		return val && typeof val === "object"
-			&& typeof val.onSpeak === "function"
-			&& typeof val.init === "function"
-			&& typeof val.onStop === "function"
-			&& val.i
-			&& val.i.audioWorklet;
+		if (!val || typeof val !== "object"
+			|| typeof val.onSpeak !== "function"
+			|| typeof val.init !== "function"
+			|| typeof val.onStop !== "function") {
+			return false;
+		}
+		for (const key of Object.getOwnPropertyNames(val)) {
+			try {
+				const prop = val[key];
+				if (prop && (prop.audioWorklet || prop instanceof FakeAudioContext)) {
+					return true;
+				}
+			} catch (_) {}
+		}
+		return false;
 	}
 
 	function getTtsEngine() {
