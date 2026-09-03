@@ -9,7 +9,7 @@ from tests.test_support import load_driver_module
 
 class LanguageRedirectTests(unittest.TestCase):
     """Verify redirect_language() redirects unsupported locales to the best
-    available alternative, matching Google TTS APK's LanguageRegistry."""
+    available alternative."""
 
     @classmethod
     def setUpClass(cls) -> None:

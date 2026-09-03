@@ -328,7 +328,6 @@ def validate_package_catalog(catalog: VoiceCatalog) -> list[str]:
     """Validate catalog integrity for all installed packages.
 
     Returns a list of warning messages for any issues found.
-    Modeled after Google TTS APK's CheckVoiceData pattern.
     """
     warnings: list[str] = []
     allSpeakerIds: set[str] = set()

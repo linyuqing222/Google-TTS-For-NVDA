@@ -1,16 +1,14 @@
 {
   "schemaVersion": 1,
   "source": {
-    "artifact": "Google Speech Recognition and Synthesis APK decompilation",
-    "class": "com/google/android/apps/speech/tts/googletts/util/MarkupGenerator",
-    "decompiledClass": "jadx/sources/defpackage/did.java",
+    "artifact": "decompiled reference TTS client",
     "observations": [
       "The default sentence iterator uses Locale.US.",
       "Language and country select a cached locale-specific BreakIterator sentence instance.",
       "Sentence text is trimmed before it is emitted.",
       "A sentence longer than 200 UTF-16 code units is diagnosed as overly long."
     ],
-    "scope": "Behavioral cases inspired by the APK path; expected results are for this add-on's Unicode-aware, low-latency segmenter."
+    "scope": "Behavioral cases inspired by observed reference-client behavior; expected results are for this add-on's Unicode-aware, low-latency segmenter."
   },
   "cases": [
     {

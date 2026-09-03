@@ -305,7 +305,6 @@ def _voice_for_language(catalog: VoiceCatalog, language: str | None, fallbackVoi
     for speaker in _speakers_for_language(catalog, normalizedLanguage):
         return speaker.id
     # Language redirect: map unsupported locale to best available alternative.
-    # Modeled after Google TTS APK's LanguageRegistry.
     availableLanguages = set(catalog.voices_by_language())
     redirected = language_detector.redirect_language(normalizedLanguage, availableLanguages)
     if redirected:

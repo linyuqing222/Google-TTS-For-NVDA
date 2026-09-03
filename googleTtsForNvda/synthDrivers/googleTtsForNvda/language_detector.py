@@ -52,7 +52,6 @@ _LANGUAGE_ALIASES = {
 }
 _CHINESE_LANGUAGE_ROOTS = {"cmn", "yue", "zh"}
 # Specific dialect → best supported dialect redirects.
-# Modeled after Google TTS APK's LanguageRegistry.nativeGetRedirectForLanguage().
 # Only dialects that are commonly requested but not always available need entries.
 _LANGUAGE_REDIRECTS: dict[str, str] = {
     "fr-ca": "fr-fr",
@@ -84,8 +83,8 @@ _LANGUAGE_REDIRECTS: dict[str, str] = {
 def redirect_language(language: str | None, available_languages: set[str]) -> str | None:
     """Redirect an unsupported locale to the best available alternative.
 
-    Modeled after Google TTS APK's LanguageRegistry: when a specific locale
-    is not available, return the most appropriate supported locale.
+    When a specific locale is not available, return the most appropriate
+    supported locale.
     Returns None if no redirect is needed (language is already available)
     or no suitable redirect exists.
     """

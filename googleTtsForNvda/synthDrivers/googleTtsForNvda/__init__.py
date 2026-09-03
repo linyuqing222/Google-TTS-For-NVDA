@@ -119,7 +119,7 @@ class ReadOnlyTextDriverSetting(DriverSetting):
     readOnlyText = True
 
 
-# 5-point rate factor interpolation (inverted from IBMTTS empirical measurements).
+# 5-point rate factor interpolation (from empirically measured break durations).
 # Higher rates get shorter breaks; lower rates get longer breaks.
 _BREAK_RATE_TABLE = ((10, 1.8), (43, 1.3), (60, 1.0), (75, 0.7), (85, 0.4))
 
@@ -699,7 +699,7 @@ class SynthDriver(synthDriverHandler.SynthDriver):
             # When CharacterModeCommand is active (NVDA spelling mode), space out
             # individual characters so the browser TTS engine pronounces each one
             # distinctly — mimicking the SSML <say-as interpret-as="characters">
-            # behavior used by NVDA's SAPI5 and eSpeak drivers.
+            # behavior used by other NVDA synthesizer drivers.
             rawText = " ".join(textParts) if _inCharMode else "".join(textParts)
             textParts.clear()
             textCharCount = 0
@@ -1750,7 +1750,6 @@ class SynthDriver(synthDriverHandler.SynthDriver):
         for speaker in self._speakers_for_language(normalizedLang):
             return speaker.id
         # Language redirect: map unsupported locale to best available alternative.
-        # Modeled after Google TTS APK's LanguageRegistry.
         redirected = language_detector.redirect_language(normalizedLang, self.availableLanguages)
         if redirected:
             for speaker in self._speakers_for_language(redirected):
